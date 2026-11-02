@@ -13,14 +13,14 @@ Open Bars shares an iPhone's cellular connection with your other devices over an
   <img src="docs/images/connect-setup.png" width="250" alt="Connect tab: three setup steps">
 </p>
 
-One app runs on iPhone, iPad and Mac:
+One app runs on iPhone, iPad and Mac, and there's a Windows app for PCs:
 
 - **Share** (the iPhone with Personal Hotspot on) runs the tunnel server.
-- **Connect** (a Mac, iPad or another iPhone on that hotspot) pairs with the iPhone once, then sets up a VPN that turns itself on whenever the device joins that hotspot and off everywhere else.
+- **Connect** (a Mac, iPad, another iPhone, or a Windows PC on that hotspot) pairs with the iPhone once, then turns its tunnel on whenever the device joins that hotspot and off everywhere else.
 
-Windows, Android and Linux devices use the standard WireGuard app with a config from the iPhone. Open Bars apps for Android and Windows are [planned](#plans).
+Android and Linux devices use the standard WireGuard app with a config from the iPhone. An Open Bars app for Android is [planned](#plans).
 
-Requires iOS 17 or later (Control Center controls and widgets need iOS 18) and macOS 15 or later.
+Requires iOS 17 or later (Control Center controls and widgets need iOS 18), macOS 15 or later, and Windows 10 or 11 for the Windows app.
 
 ## Install
 
@@ -44,6 +44,10 @@ Build it with Xcode (see [Building](#building)). macOS allows a VPN app extensio
 
 `OpenBars-<version>-macOS.zip` is included for completeness. To open it, run `xattr -dr com.apple.quarantine "Open Bars.app"` and `codesign --force --deep --sign - "Open Bars.app"`. It can pair, but not connect. Without a developer account, use the WireGuard app for Mac with a config from the iPhone (see **Other devices** under [Using it](#using-it)).
 
+### Windows
+
+Download `OpenBars-windows-<arch>-<version>.zip` (x64 or ARM64), unzip it and run `OpenBars.exe`. It offers to install itself (administrator prompt): it goes to `C:\Program Files\Open Bars` with a small background service that runs the tunnel, a Start menu entry and a tray icon. The builds aren't code-signed yet, so SmartScreen may ask first (**More info › Run anyway**). Remove it from **Settings › Apps**. See [windows/README.md](windows/README.md) for details.
+
 ## Using it
 
 **On the iPhone that shares**
@@ -65,6 +69,12 @@ Other ways to start and stop (iOS 18 or later):
 
 On a Mac, Open Bars lives in the menu bar once it's set up. **Settings › Menu Bar & Dock** chooses where it shows.
 
+**On a Windows PC**
+
+1. Join the iPhone's hotspot (Wi‑Fi or USB) and open Open Bars from the tray or the Start menu.
+2. Click **Pair with iPhone**, then **Allow** on the iPhone.
+3. That's it: the tunnel turns on by itself whenever the PC is on that hotspot. The tray icon shows the state (green bars when connected), and **Diagnose** checks each link if something doesn't work.
+
 **Other devices (WireGuard app)**
 
 In Share, tap **Add**, create a device under **With the WireGuard app**, then scan its QR code with the WireGuard app. On a laptop, open `http://172.20.10.1:8080` while on the hotspot and download its `.conf`.
@@ -79,6 +89,8 @@ In Share, tap **Add**, create a device under **With the WireGuard app**, then sc
 - Pairing is a small HTTP API on the iPhone (`/api/pair`), answered only after someone taps Allow there.
 
 ## Building
+
+The Windows app builds from macOS or Linux with Go alone: `windows/build.sh <version>` (see [windows/README.md](windows/README.md)). The rest of this section is the iPhone/iPad/Mac app.
 
 Requirements: macOS with Xcode 26 or later, Go (see `ios-app/core/go.mod`), [gomobile](https://pkg.go.dev/golang.org/x/mobile/cmd/gomobile), [XcodeGen](https://github.com/yonaskolb/XcodeGen) and a paid Apple Developer account (Network Extensions need one).
 
@@ -130,6 +142,7 @@ The GitHub Actions workflow (`.github/workflows/ios-app.yml`) builds an unsigned
 | `ios-app/core/engine` | The sharing server (wireguard-go, TCP/UDP forwarding, DNS, pairing, usage, config page) |
 | `ios-app/core/wgcore`, `wgclient` | gomobile APIs for the iPhone app and the Connect extension |
 | `ios-app/tools` | Icon, shortcut and license-list generators |
+| `windows` | Open Bars Connect for Windows (Go: service, tray app, installer; see its README) |
 
 ## Known limits
 
@@ -139,7 +152,7 @@ The GitHub Actions workflow (`.github/workflows/ios-app.yml`) builds an unsigned
 
 ## Plans
 
-- **Connect for Android and Windows:** small Open Bars apps that pair with the iPhone the same way (tap Allow on the iPhone) and turn the tunnel on by themselves on its hotspot, like Connect on Apple devices. Until then, these devices use the WireGuard app.
+- **Connect for Android:** a small Open Bars app that pairs with the iPhone the same way (tap Allow on the iPhone) and turns the tunnel on by itself on its hotspot, like Connect on Apple devices and Windows. Until then, Android devices use the WireGuard app.
 - **Sharing from Android:** exploring whether the Share side can run on an Android phone too, so its mobile data can be shared the same way.
 
 ## License
