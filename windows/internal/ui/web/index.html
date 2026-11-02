@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<title>Open Bars</title>
+<style>
+:root {
+  --bg: #f3f3f3; --card: #fbfbfb; --card2: #ffffff; --border: #e5e5e5; --text: #1b1b1b; --muted: #5f5f5f;
+  --accent: #1f9e4a; --accent-text: #fff; --warn: #b85c00; --err: #c42b1c; --ok: #0f7b0f; --hover: #f0f0f0;
+  --nav-sel: #e9e9e9; --mono: "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #202020; --card: #2b2b2b; --card2: #323232; --border: #3a3a3a; --text: #f3f3f3; --muted: #a8a8a8;
+    --accent: #3fcf6e; --accent-text: #0a2a14; --warn: #fcb24a; --err: #ff99a4; --ok: #6ccb5f; --hover: #353535; --nav-sel: #383838; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+  font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; user-select: none; }
+.app { display: flex; height: 100%; }
+nav { width: 200px; padding: 16px 8px; display: flex; flex-direction: column; gap: 2px; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 4px 12px 16px; font-weight: 600; font-size: 15px; }
+nav button { all: unset; display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 6px; cursor: default; position: relative; }
+nav button:hover { background: var(--hover); }
+nav button.sel { background: var(--nav-sel); }
+nav button.sel::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 2px; background: var(--accent); }
+nav .spacer { flex: 1; }
+nav .about { padding: 8px 12px; color: var(--muted); font-size: 12px; }
+main { flex: 1; overflow: auto; padding: 24px 28px 28px 8px; }
+h1 { font: 600 28px/1.2 "Segoe UI Variable Display", "Segoe UI", sans-serif; margin: 4px 0 20px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px; margin-bottom: 12px; }
+.row { display: flex; align-items: center; gap: 12px; }
+.row .grow { flex: 1; min-width: 0; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.hero { display: flex; gap: 18px; align-items: center; }
+.hero .title { font-size: 20px; font-weight: 600; }
+.hint { margin-top: 6px; color: var(--warn); }
+.btn { all: unset; padding: 6px 14px; border-radius: 4px; border: 1px solid var(--border); background: var(--card2); cursor: default; white-space: nowrap; text-align: center; }
+.btn:hover { background: var(--hover); }
+.btn.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.danger { color: var(--err); }
+.btn[disabled] { opacity: .45; pointer-events: none; }
+.toggle { position: relative; width: 40px; height: 20px; flex: none; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle span { position: absolute; inset: 0; border-radius: 10px; border: 1px solid var(--muted); transition: .15s; }
+.toggle span::after { content: ""; position: absolute; width: 12px; height: 12px; left: 3px; top: 3px; border-radius: 50%; background: var(--muted); transition: .15s; }
+.toggle input:checked + span { background: var(--accent); border-color: var(--accent); }
+.toggle input:checked + span::after { left: 23px; background: var(--accent-text); }
+.toggle input:disabled + span { opacity: .4; }
+.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.stat .v { font-size: 18px; font-weight: 600; }
+.steps { margin: 8px 0 0; padding-left: 20px; }
+.steps li { margin: 4px 0; }
+.error { color: var(--err); white-space: pre-line; margin-top: 8px; }
+.ok { color: var(--ok); }
+/* Log */
+.toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.toolbar select, .toolbar input[type=search] { font: inherit; color: var(--text); background: var(--card2); border: 1px solid var(--border); border-radius: 4px; padding: 5px 8px; }
+.toolbar input[type=search] { flex: 1; min-width: 140px; }
+.log { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; height: calc(100vh - 210px);
+  overflow: auto; font: 12px/1.5 var(--mono); user-select: text; white-space: pre-wrap; word-break: break-word; }
+.log .e { display: grid; grid-template-columns: auto auto auto 1fr; column-gap: 14px; }
+.log .lv-warn { color: var(--warn); } .log .lv-error { color: var(--err); } .log .lv-debug { color: var(--muted); }
+.log .h { grid-column: 4; color: var(--muted); }
+.log .empty { color: var(--muted); font-family: inherit; }
+/* Diagnose */
+.check { display: flex; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+.check:first-child { border-top: 0; }
+.check .icon { width: 22px; flex: none; font-size: 16px; text-align: center; }
+.check .t { font-weight: 600; }
+.icon.ok { color: var(--ok); } .icon.warning { color: var(--warn); } .icon.failed { color: var(--err); }
+.page { display: none; } .page.sel { display: block; }
+.spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: s 0.8s linear infinite; vertical-align: -2px; }
+@keyframes s { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav>
+    <div class="brand"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#2fc95e"/><g fill="#fff"><rect x="4" y="15" width="2.6" height="3.5" rx="1.3"/><rect x="7.9" y="12.5" width="2.6" height="6" rx="1.3"/><rect x="11.8" y="10" width="2.6" height="8.5" rx="1.3"/><rect x="15.7" y="7.5" width="2.6" height="11" rx="1.3"/></g></svg>Open Bars</div>
+    <button data-page="status">⦿&nbsp; Status</button>
+    <button data-page="log">≡&nbsp; Log</button>
+    <button data-page="diagnose">✓&nbsp; Diagnose</button>
+    <div class="spacer"></div>
+    <div class="about" id="about"></div>
+  </nav>
+  <main>
+    <section class="page" id="page-status">
+      <h1>Status</h1>
+      <div class="card hero">
+        <svg id="bars" width="56" height="56" viewBox="0 0 24 24" aria-hidden="true"></svg>
+        <div class="grow">
+          <div class="title" id="st-title">…</div>
+          <div class="muted" id="st-detail"></div>
+          <div class="hint" id="st-hint"></div>
+        </div>
+        <button class="btn primary" id="btn-connect">Connect now</button>
+        <button class="btn" id="btn-disconnect">Disconnect</button>
+      </div>
+      <div class="card grid" id="stats" style="display:none">
+        <div class="stat"><div class="muted small">Received</div><div class="v" id="s-rx">–</div></div>
+        <div class="stat"><div class="muted small">Sent</div><div class="v" id="s-tx">–</div></div>
+        <div class="stat"><div class="muted small">Last handshake</div><div class="v" id="s-hs">–</div></div>
+        <div class="stat"><div class="muted small">Connected for</div><div class="v" id="s-up">–</div></div>
+      </div>
+      <div class="card row" id="auto-card">
+        <div class="grow"><div>Connect automatically</div>
+          <div class="muted small">Whenever this PC joins <span id="phone-name">the iPhone</span>’s hotspot. Off everywhere else.</div></div>
+        <label class="toggle"><input type="checkbox" id="auto"><span></span></label>
+      </div>
+      <div class="card" id="pair-card">
+        <div class="row"><div class="grow">
+          <div id="pair-title">Pair with your iPhone</div>
+          <div class="muted small" id="pair-detail"></div></div>
+          <button class="btn primary" id="btn-pair">Pair with iPhone</button>
+          <button class="btn danger" id="btn-forget">Forget iPhone</button>
+        </div>
+        <ol class="steps muted small" id="pair-steps">
+          <li>On the iPhone, turn on Personal Hotspot, open Open Bars and tap Start.</li>
+          <li>Join the iPhone’s hotspot on this PC (it’s named after the iPhone).</li>
+          <li>Click Pair with iPhone, then tap Allow on the iPhone within 90 seconds.</li>
+        </ol>
+        <div class="error" id="pair-error"></div>
+      </div>
+      <div class="muted small" id="addr"></div>
+    </section>
+
+    <section class="page" id="page-log">
+      <h1>Log</h1>
+      <div class="toolbar">
+        <select id="filter"><option value="all">All entries</option><option value="problems">Warnings and errors</option></select>
+        <input type="search" id="search" placeholder="Search">
+        <button class="btn" id="btn-copy">Copy</button>
+        <button class="btn" id="btn-export">Export…</button>
+        <button class="btn danger" id="btn-clear">Clear</button>
+      </div>
+      <div class="toolbar small">
+        <label class="row"><label class="toggle"><input type="checkbox" id="utc"><span></span></label>Show times in UTC</label>
+        <span style="width:18px"></span>
+        <label class="row"><label class="toggle"><input type="checkbox" id="detailed"><span></span></label>Detailed logging</label>
+        <span class="muted" id="detailed-note"></span>
+      </div>
+      <div class="log" id="log"></div>
+      <div class="muted small" style="margin-top:6px">Detailed logs include the addresses this PC connects to. They stay on this PC unless you share them.</div>
+    </section>
+
+    <section class="page" id="page-diagnose">
+      <h1>Diagnose</h1>
+      <div class="card row">
+        <div class="grow muted">Checks each link the connection depends on, in order, and stops at the first one that’s broken.</div>
+        <button class="btn primary" id="btn-diag">Run checks</button>
+      </div>
+      <div class="card" id="checks"><div class="muted">Not run yet.</div></div>
+    </section>
+  </main>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+let page = "__START_PAGE__", status = null, logNext = 0, logEntries = [], logTimer = null;
+
+function showPage(p) {
+  page = p;
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("sel", b.dataset.page === p));
+  document.querySelectorAll(".page").forEach(s => s.classList.toggle("sel", s.id === "page-" + p));
+  if (p === "log") startLog(); else stopLog();
+}
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => showPage(b.dataset.page));
+
+function bytes(n) { if (n < 1000) return n + " B"; const u = "kMGTP"; let i = -1; do { n /= 1000; i++; } while (n >= 1000 && i < 4); return n.toFixed(1) + " " + u[i] + "B"; }
+function ago(sec) { if (sec < 60) return sec + " s ago"; if (sec < 3600) return Math.floor(sec / 60) + " min ago"; return Math.floor(sec / 3600) + " h ago"; }
+function dur(sec) { const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60); return h ? h + " h " + m + " min" : m ? m + " min" : sec + " s"; }
+
+function drawBars(phase) {
+  // Green bars fill up while connecting; orange means a problem; gray is waiting.
+  const green = "#2fc95e", orange = "#f2a33a", gray = "#9a9a9a";
+  const [on, color] = ({ connected: [4, green], connecting: [2, green], checking: [2, green],
+    problem: [4, orange], not_sharing: [4, orange], not_this_phone: [4, orange] })[phase] || [4, gray];
+  const dim = getComputedStyle(document.body).getPropertyValue("--border");
+  let s = "";
+  for (let i = 0; i < 4; i++) {
+    const h = 4 + i * 4.5, x = 2.5 + i * 5.2;
+    s += `<rect x="${x}" y="${21 - h}" width="3.6" height="${h}" rx="1.8" fill="${i < on ? color : dim}"/>`;
+  }
+  $("bars").innerHTML = s;
+}
+
+async function refresh() {
+  try {
+    const s = await obStatus();
+    status = s;
+    $("st-title").textContent = s.title;
+    $("st-detail").textContent = s.detail || "";
+    $("st-hint").textContent = s.hint || "";
+    drawBars(s.phase);
+    const up = !!s.tunnel;
+    $("btn-connect").style.display = !up && s.paired && s.phase !== "no_hotspot" && s.phase !== "unpaired" ? "" : "none";
+    $("btn-disconnect").style.display = up ? "" : "none";
+    $("stats").style.display = up ? "" : "none";
+    if (up) {
+      const now = Date.now() / 1000, t = s.tunnel;
+      $("s-rx").textContent = bytes(t.rx); $("s-tx").textContent = bytes(t.tx);
+      $("s-hs").textContent = t.last_handshake ? ago(Math.max(0, Math.round(now - t.last_handshake))) : "not yet";
+      $("s-up").textContent = t.since ? dur(Math.max(0, Math.round(now - t.since))) : "–";
+    }
+    $("auto").checked = s.auto_connect; $("auto").disabled = !s.paired;
+    $("auto-card").style.display = s.paired ? "" : "none";
+    $("phone-name").textContent = s.phone_name || "the iPhone";
+    $("btn-pair").style.display = s.paired ? "none" : "";
+    $("btn-forget").style.display = s.paired ? "" : "none";
+    $("pair-steps").style.display = s.paired ? "none" : "";
+    $("btn-pair").disabled = s.pairing;
+    if (s.pairing) { $("btn-pair").innerHTML = '<span class="spin"></span>&nbsp; Waiting for Allow…'; }
+    else { $("btn-pair").textContent = "Pair with iPhone"; }
+    $("pair-title").textContent = s.paired ? "Paired with " + s.phone_name : "Pair with your iPhone";
+    $("pair-detail").textContent = s.paired ? "This PC is “" + s.device_name + "” on the iPhone." : "One-time setup. The private key never leaves this PC.";
+    $("addr").textContent = s.paired ? `Tunnel address ${s.address}${s.address6 ? ", " + s.address6 : ""} · iPhone at ${s.endpoint}${s.hotspot ? " · via " + s.hotspot : ""}` : "";
+    updateDetailed(s.detailed_until);
+  } catch (e) {
+    $("st-title").textContent = "Can’t reach the Open Bars service";
+    $("st-detail").textContent = ""; $("st-hint").textContent = String(e.message || e);
+    drawBars("problem");
+  }
+}
+
+$("btn-connect").onclick = async () => { await obConnect().catch(alertErr); refresh(); };
+$("btn-disconnect").onclick = async () => { await obDisconnect().catch(alertErr); refresh(); };
+$("auto").onchange = async e => { await obSetAuto(e.target.checked).catch(alertErr); refresh(); };
+$("btn-forget").onclick = async () => {
+  if (!confirm("Forget the iPhone? This PC stops connecting until you pair again. To remove it on the iPhone too: Share › the device › Remove Device.")) return;
+  await obForget().catch(alertErr); refresh();
+};
+$("btn-pair").onclick = async () => {
+  $("pair-error").textContent = "";
+  setTimeout(refresh, 300);
+  try { await obPair(); } catch (e) { $("pair-error").textContent = String(e.message || e); }
+  refresh();
+};
+function alertErr(e) { alert(String(e.message || e)); }
+
+// Log
+function startLog() { if (!logTimer) { loadLog(); logTimer = setInterval(loadLog, 1000); } }
+function stopLog() { clearInterval(logTimer); logTimer = null; }
+async function loadLog(reset) {
+  if (reset) { logNext = 0; logEntries = []; }
+  try {
+    const p = await obLogs(logNext);
+    if (logNext > 0 && p.first > logNext + 1) logEntries = [];
+    if (p.entries.length) { logEntries.push(...p.entries); if (logEntries.length > 3000) logEntries = logEntries.slice(-3000); }
+    logNext = p.next;
+    if (p.entries.length || reset) renderLog();
+  } catch (e) { $("log").innerHTML = `<div class="empty">${esc(String(e.message || e))}</div>`; }
+}
+function esc(s) { return s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
+function renderLog() {
+  const box = $("log"), atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
+  const q = $("search").value.toLowerCase(), problems = $("filter").value === "problems";
+  const rows = logEntries.filter(e => (!problems || e.lvl === "warn" || e.lvl === "error") &&
+    (!q || (e.msg + " " + e.src + " " + (e.hint || "")).toLowerCase().includes(q)));
+  box.innerHTML = rows.length ? rows.map(e =>
+    `<div class="e lv-${e.lvl}"><span>${e.ts}</span><span>${e.lvl.toUpperCase().padEnd(5)}</span><span>${esc(e.src.padEnd(6))}</span><span>${esc(e.msg)}</span>${e.hint ? `<span class="h">↳ ${esc(e.hint)}</span>` : ""}</div>`).join("")
+    : `<div class="empty">${logEntries.length ? "Nothing matches." : "Nothing logged yet."}</div>`;
+  if (atBottom) box.scrollTop = box.scrollHeight;
+}
+$("search").oninput = renderLog; $("filter").onchange = renderLog;
+$("utc").onchange = async e => { await obSetUTC(e.target.checked); loadLog(true); };
+$("detailed").onchange = async e => { await obSetDetailed(e.target.checked).catch(alertErr); refresh(); };
+function updateDetailed(until) {
+  $("detailed").checked = until > 0;
+  $("detailed-note").textContent = until > 0 ? "Turns itself off in " + Math.max(1, Math.ceil((until - Date.now()) / 60000)) + " min" : "";
+}
+$("btn-copy").onclick = async () => { try { await obCopy(); $("btn-copy").textContent = "Copied"; setTimeout(() => $("btn-copy").textContent = "Copy", 1500); } catch (e) { alertErr(e); } };
+$("btn-export").onclick = async () => { try { await obExport(); } catch (e) { alertErr(e); } };
+$("btn-clear").onclick = async () => { if (confirm("Clear the log?")) { await obClearLogs().catch(alertErr); loadLog(true); } };
+
+// Diagnose
+$("btn-diag").onclick = async () => {
+  const box = $("checks");
+  box.innerHTML = '<div class="muted"><span class="spin"></span>&nbsp; Checking…</div>';
+  $("btn-diag").disabled = true;
+  try {
+    const checks = await obDiagnose();
+    const icons = { ok: "✔", warning: "!", failed: "✖" };
+    const actions = { pair: ["Pair with iPhone", () => { showPage("status"); $("btn-pair").click(); }],
+      connect: ["Connect now", async () => { await obConnect(); }], auto: ["Turn on", async () => { await obSetAuto(true); }] };
+    box.innerHTML = "";
+    for (const c of checks) {
+      const d = document.createElement("div"); d.className = "check";
+      d.innerHTML = `<div class="icon ${c.state}">${icons[c.state] || "?"}</div><div class="grow"><div class="t">${esc(c.title)}</div><div class="muted">${esc(c.detail)}</div>${c.hint ? `<div class="hint">${esc(c.hint)}</div>` : ""}</div>`;
+      if (c.action && actions[c.action]) {
+        const b = document.createElement("button"); b.className = "btn"; b.textContent = actions[c.action][0];
+        b.onclick = async () => { await actions[c.action][1](); setTimeout(() => $("btn-diag").click(), 1500); };
+        d.appendChild(b);
+      }
+      box.appendChild(d);
+    }
+  } catch (e) { box.innerHTML = `<div class="error">${esc(String(e.message || e))}</div>`; }
+  $("btn-diag").disabled = false;
+};
+
+(async () => {
+  const a = await obAbout(); $("about").textContent = `Version ${a.version}`;
+  $("utc").checked = (await obPrefs()).utc;
+  showPage(page); refresh(); setInterval(refresh, 1500);
+})();
+</script>
+</body>
+</html>
