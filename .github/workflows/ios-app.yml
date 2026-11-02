@@ -1,0 +1,102 @@
+name: iOS app (Open Bars)
+
+on:
+  push:
+    paths:
+      - "ios-app/**"
+      - ".github/workflows/ios-app.yml"
+  # Pushes only build (the .ipa is kept as a run artifact). A release is
+  # published only when run by hand with "publish" ticked.
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish a GitHub release with the .ipa"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write # create the release and its tag
+
+jobs:
+  build:
+    runs-on: macos-26 # Xcode 26+: needed for AppIcon.icon (Icon Composer)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ios-app/core/go.mod
+          cache-dependency-path: ios-app/core/go.sum
+
+      - name: Test WireGuard core
+        working-directory: ios-app/core
+        continue-on-error: true # test failures are reported but don't stop the build
+        run: go test ./... -count=1 -v -timeout 180s
+
+      - name: Build WGCore + WGClient xcframeworks (gomobile)
+        working-directory: ios-app/core
+        run: |
+          # gomobile and gobind at the x/mobile version pinned in go.mod.
+          go install golang.org/x/mobile/cmd/gomobile golang.org/x/mobile/cmd/gobind
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          gomobile init
+          gomobile bind -target=ios -iosversion=17.0 -ldflags="-s -w" \
+            -o ../OpenBars/Frameworks/WGCore.xcframework ./wgcore
+          # WireGuard client for the Connect tunnel extension (iOS + Mac).
+          gomobile bind -target=ios,macos -iosversion=17.0 -macosversion=15.0 -ldflags="-s -w" \
+            -o ../OpenBars/Frameworks/WGClient.xcframework ./wgclient
+          ls ../OpenBars/Frameworks/
+
+      - name: Generate Xcode project
+        working-directory: ios-app/OpenBars
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build unsigned app
+        working-directory: ios-app/OpenBars
+        run: |
+          set -o pipefail
+          xcodebuild -project OpenBars.xcodeproj -scheme OpenBars \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee build.log | grep -E "error:|/Sources/.*\.swift:.*warning:|BUILD (SUCCEEDED|FAILED)" || true
+          test -d build/Build/Products/Release-iphoneos/OpenBars.app || { tail -100 build.log; exit 1; }
+
+      - name: Package .ipa
+        working-directory: ios-app/OpenBars
+        run: |
+          rm -rf Payload && mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/OpenBars.app Payload/
+          # An ad-hoc signature gives the executable a signature block for the
+          # re-signing tool (Feather, etc.) to replace with the user's own.
+          codesign --force --sign - --timestamp=none Payload/OpenBars.app
+          codesign -dv Payload/OpenBars.app 2>&1 | head -5
+          # OpenBars-<version>-build<run>.ipa, the name the README uses.
+          VERSION=$(sed -n 's/^ *MARKETING_VERSION: *"\{0,1\}\([^"]*\)"\{0,1\}.*/\1/p' project.yml | head -1)
+          IPA="OpenBars-${VERSION}-build${{ github.run_number }}.ipa"
+          rm -f OpenBars-*.ipa
+          zip -qr "$IPA" Payload
+          ls -la "$IPA"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.IPA }}
+          path: ios-app/OpenBars/${{ env.IPA }}
+
+      - name: Publish release (for Feather)
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}-build${{ github.run_number }}
+          name: Open Bars ${{ env.VERSION }} (build ${{ github.run_number }})
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          make_latest: false
+          files: ios-app/OpenBars/${{ env.IPA }}
+          body: |
+            Unsigned build. On your iPhone: long-press **${{ env.IPA }}** below → Copy Link,
+            then in Feather add it to your Library with Import from URL and sign it with your own certificate.

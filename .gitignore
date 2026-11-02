@@ -1,0 +1,8 @@
+.DS_Store
+ios-app/OpenBars/Frameworks/
+ios-app/OpenBars/OpenBars.xcodeproj/
+ios-app/OpenBars/Info.plist
+ios-app/OpenBars/build/
+ios-app/OpenBars/Payload/
+*.ipa
+ios-app/OpenBars/Generated/

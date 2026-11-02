@@ -1,0 +1,231 @@
+name: OpenBars
+options:
+  bundleIdPrefix: dev.aayy
+  deploymentTarget:
+    iOS: "17.0"
+    macOS: "15.0" # menu bar app: window launch behavior needs 15
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_BITCODE: "NO"
+    # Unsigned by default (CI and Feather builds); set a team in Xcode to sign.
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGN_IDENTITY: ""
+    PRODUCT_BUNDLE_IDENTIFIER: dev.aayy.openbars
+targets:
+  # iPhone/iPad: Share (host the hotspot server) and Connect (use one) tabs.
+  OpenBars:
+    type: application
+    scheme: {}
+    platform: iOS
+    sources:
+      - Sources
+      - Client
+      - Shared
+      - path: Resources # asset catalog, app icon, licenses, bundled shortcuts
+        optional: true
+    dependencies:
+      - framework: Frameworks/WGCore.xcframework # gomobile: static, not embedded
+        embed: false
+      - sdk: libresolv.tbd
+      - target: OpenBarsTunnel # background sharing
+      - target: OpenBarsConnect # Connect tab's WireGuard tunnel
+      - target: OpenBarsWidgets # Control Center control and widgets
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        OTHER_LDFLAGS: ["-lresolv"] # Go's DNS resolver
+    entitlements:
+      path: Generated/OpenBars-iOS.entitlements
+      properties:
+        # OpenBarsTunnel (background sharing) and OpenBarsConnect (Connect tab).
+        com.apple.developer.networking.networkextension: [packet-tunnel-provider]
+        # Shared with OpenBarsTunnel: the usage history file.
+        com.apple.security.application-groups: [group.dev.aayy.openbars]
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Open Bars
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+          - UIInterfaceOrientationPortraitUpsideDown
+        NSLocalNetworkUsageDescription: Lets devices on your Personal Hotspot connect to this iPhone, and lets Connect mode read settings from the iPhone you're on.
+        # Publishing this Bonjour service is what brings up the Local Network prompt.
+        NSBonjourServices:
+          - _openbars._udp
+        ITSAppUsesNonExemptEncryption: false
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true # Connect mode talks plain HTTP to 172.20.10.1
+        # openbars://hotspot: Shortcuts reports back after the hotspot shortcut.
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.aayy.openbars
+            CFBundleURLSchemes: [openbars]
+        # Lets Open Bars open Shortcuts to run the hotspot shortcut.
+        LSApplicationQueriesSchemes: [shortcuts]
+  # Background sharing: runs the same engine in a Network Extension that iOS
+  # keeps alive while on. It claims no routes (see PacketTunnelProvider).
+  OpenBarsTunnel:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Tunnel
+      - path: Shared/SharedState.swift # tells the control and widgets it's running
+      - path: Client/LogModel.swift # log entries and messages shared with the app
+    dependencies:
+      - framework: Frameworks/WGCore.xcframework
+        embed: false
+      - sdk: libresolv.tbd
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.aayy.openbars.tunnel
+        TARGETED_DEVICE_FAMILY: "1,2"
+        OTHER_LDFLAGS: ["-lresolv"]
+    entitlements:
+      path: Generated/OpenBarsTunnel.entitlements
+      properties:
+        com.apple.developer.networking.networkextension: [packet-tunnel-provider]
+        com.apple.security.application-groups: [group.dev.aayy.openbars]
+    info:
+      path: Generated/Info-Tunnel.plist
+      properties:
+        CFBundleDisplayName: Open Bars
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.networkextension.packet-tunnel
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).PacketTunnelProvider"
+  # Control Center / Lock Screen / Action button control and Home Screen
+  # widgets for sharing. Its actions start background sharing directly.
+  OpenBarsWidgets:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - Widgets
+      - Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.aayy.openbars.widgets
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: ["$(inherited)", "WIDGET_EXTENSION"]
+    entitlements:
+      path: Generated/OpenBarsWidgets.entitlements
+      properties:
+        # Starting/stopping the background-sharing VPN from a control.
+        com.apple.developer.networking.networkextension: [packet-tunnel-provider]
+        com.apple.security.application-groups: [group.dev.aayy.openbars]
+    info:
+      path: Generated/Info-Widgets.plist
+      properties:
+        CFBundleDisplayName: Open Bars
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+  # Connect tab: WireGuard tunnel to an Open Bars iPhone, on-demand by
+  # hotspot name. Same sources for iPhone/iPad and Mac.
+  OpenBarsConnect:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Connect
+      - path: Client/LogModel.swift # log entries and messages shared with the app
+    dependencies:
+      - framework: Frameworks/WGClient.xcframework
+        embed: false
+      - sdk: libresolv.tbd
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.aayy.openbars.connect
+        TARGETED_DEVICE_FAMILY: "1,2"
+        OTHER_LDFLAGS: ["-lresolv"]
+    entitlements:
+      path: Generated/OpenBarsConnect-iOS.entitlements
+      properties:
+        com.apple.developer.networking.networkextension: [packet-tunnel-provider]
+    info:
+      path: Generated/Info-Connect-iOS.plist
+      properties:
+        CFBundleDisplayName: Open Bars
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.networkextension.packet-tunnel
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).ConnectTunnelProvider"
+  OpenBarsConnectMac:
+    type: app-extension
+    platform: macOS
+    sources:
+      - Connect
+      - path: Client/LogModel.swift # log entries and messages shared with the app
+    dependencies:
+      - framework: Frameworks/WGClient.xcframework
+        embed: false
+      - sdk: libresolv.tbd
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.aayy.openbars.connect
+        OTHER_LDFLAGS: ["-lresolv"]
+    entitlements:
+      path: Generated/OpenBarsConnect-macOS.entitlements
+      properties:
+        com.apple.developer.networking.networkextension: [packet-tunnel-provider]
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        com.apple.security.network.server: true
+    info:
+      path: Generated/Info-Connect-macOS.plist
+      properties:
+        CFBundleDisplayName: Open Bars
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.networkextension.packet-tunnel
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).ConnectTunnelProvider"
+  # Mac: Connect mode only (Personal Hotspot is an iPhone feature).
+  OpenBarsMac:
+    type: application
+    scheme: {}
+    platform: macOS
+    sources:
+      - Client
+      - Mac
+      - path: Resources
+        optional: true
+    dependencies:
+      - target: OpenBarsConnectMac
+    settings:
+      base:
+        PRODUCT_NAME: Open Bars
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    entitlements:
+      path: Generated/OpenBars-macOS.entitlements
+      properties:
+        com.apple.developer.networking.networkextension: [packet-tunnel-provider]
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+    info:
+      path: Generated/Info-macOS.plist
+      properties:
+        CFBundleDisplayName: Open Bars
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSApplicationCategoryType: public.app-category.utilities
+        ITSAppUsesNonExemptEncryption: false
+        # macOS 15+ asks before an app talks to the local network (the iPhone
+        # at 172.20.10.1); without this the prompt has no explanation.
+        NSLocalNetworkUsageDescription: Lets Open Bars pair with the iPhone whose hotspot you're on and check that it's sharing.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
