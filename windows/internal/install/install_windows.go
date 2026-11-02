@@ -142,7 +142,15 @@ func Install(version string, out io.Writer) error {
 	if err := startMenuShortcut(exe); err != nil {
 		fmt.Fprintln(out, "Couldn't add the Start menu shortcut:", err)
 	}
+	refreshShellIcons()
 	return nil
+}
+
+// refreshShellIcons tells Explorer that icons changed, so the taskbar and
+// Start menu drop the cached icon of an earlier version.
+func refreshShellIcons() {
+	const shcneAssocChanged, shcnfIDList = 0x08000000, 0
+	windows.NewLazySystemDLL("shell32.dll").NewProc("SHChangeNotify").Call(shcneAssocChanged, shcnfIDList, 0, 0)
 }
 
 // Uninstall removes the service, shortcut, Apps entry and files. With

@@ -57,7 +57,7 @@ func openWindow(page string) {
 			DataPath:  dataDir,
 			AutoFocus: true,
 			WindowOptions: webview2.WindowOptions{
-				Title: "Open Bars", Width: 780, Height: 680, IconId: 1, Center: true,
+				Title: "Open Bars", Width: 1000, Height: 670, IconId: 1, Center: true,
 			},
 		})
 		if w == nil {
@@ -67,9 +67,13 @@ func openWindow(page string) {
 		bindAll(w)
 		hwnd := windows.HWND(uintptr(w.Window()))
 		matchTheme(hwnd)
+		w.SetSize(640, 480, webview2.HintMin)
+		setWindowIcons(hwnd)
+		z := &sizer{hwnd: hwnd}
+		z.restore()
 		stopTheme := make(chan struct{})
 		go func() {
-			// Follow light/dark switches while the window is open.
+			// Follow light/dark switches and remember resizes while open.
 			t := time.NewTicker(2 * time.Second)
 			defer t.Stop()
 			for {
@@ -77,7 +81,10 @@ func openWindow(page string) {
 				case <-stopTheme:
 					return
 				case <-t.C:
-					w.Dispatch(func() { matchTheme(hwnd) })
+					w.Dispatch(func() {
+						matchTheme(hwnd)
+						z.remember()
+					})
 				}
 			}
 		}()
@@ -85,15 +92,6 @@ func openWindow(page string) {
 		w.Init(`document.addEventListener("contextmenu", e => {
 			if (!(e.target.closest("input, .log") || String(getSelection()))) e.preventDefault();
 		});`)
-		w.SetSize(640, 480, webview2.HintMin)
-		z := &sizer{hwnd: hwnd}
-		if p := loadPrefs(); p.Width > 0 && p.Height > 0 {
-			z.userSized = true
-			z.resize(p.Width, p.Height)
-		} else {
-			z.fit(page)
-		}
-		w.Bind("obFit", func(page string) { w.Dispatch(func() { z.fit(page) }) })
 		w.SetHtml(strings.Replace(indexHTML, "__START_PAGE__", page, 1))
 		winMu.Lock()
 		win = w
@@ -165,31 +163,30 @@ func showWindow(h windows.HWND) {
 // prefs are the window's own settings (per user).
 type prefs struct {
 	UTC    bool `json:"utc"`
-	Width  int  `json:"width,omitempty"` // a size the person chose (DIPs); 0 = fit each page
+	Width  int  `json:"width,omitempty"` // window size the person chose (DIPs); 0 = default
 	Height int  `json:"height,omitempty"`
 }
 
-// pageSizes fit each page's content without scrolling (DIPs, outer size).
-var pageSizes = map[string][2]int{
-	"status":   {780, 680},
-	"log":      {1200, 760}, // full log lines
-	"diagnose": {880, 820},  // all seven checks with hints
-}
+// defaultSize fits every page (the full log lines, all Diagnose checks).
+var defaultSize = [2]int{1000, 670}
 
-// sizer resizes the window to suit each page until the person resizes it
-// themselves; from then on their size is kept (and remembered).
+// sizer opens the window at the remembered size (or the default) and
+// remembers it whenever the person resizes it.
 type sizer struct {
 	hwnd         windows.HWND
-	lastW, lastH int32 // the size we last set (pixels)
-	userSized    bool
+	lastW, lastH int32 // pixels, as last set or saved
 }
 
 var (
 	procGetWindowRect     = user32.NewProc("GetWindowRect")
 	procIsZoomed          = user32.NewProc("IsZoomed")
+	procIsIconic          = user32.NewProc("IsIconic")
 	procGetDpiForWindow   = user32.NewProc("GetDpiForWindow")
 	procMonitorFromWindow = user32.NewProc("MonitorFromWindow")
 	procGetMonitorInfoW   = user32.NewProc("GetMonitorInfoW")
+	procSendMessageW      = user32.NewProc("SendMessageW")
+	procLoadImageW        = user32.NewProc("LoadImageW")
+	procGetSystemMetricsD = user32.NewProc("GetSystemMetricsForDpi")
 )
 
 type winRect struct{ Left, Top, Right, Bottom int32 }
@@ -200,48 +197,46 @@ func (z *sizer) rect() winRect {
 	return r
 }
 
-func (z *sizer) scale(v int) int32 {
-	dpi, _, _ := procGetDpiForWindow.Call(uintptr(z.hwnd))
-	if dpi == 0 {
-		dpi = 96
+func (z *sizer) dpi() int {
+	d, _, _ := procGetDpiForWindow.Call(uintptr(z.hwnd))
+	if d == 0 {
+		return 96
 	}
-	return int32(v * int(dpi) / 96)
+	return int(d)
 }
 
-// fit sizes the window for page unless the person has sized it.
-func (z *sizer) fit(page string) {
-	if z.userSized {
+func (z *sizer) restore() {
+	size := defaultSize
+	if p := loadPrefs(); p.Width >= 640 && p.Height >= 480 {
+		size = [2]int{p.Width, p.Height}
+	}
+	z.resize(size[0], size[1])
+}
+
+// remember saves the window's size if the person changed it (not while
+// maximized or minimized).
+func (z *sizer) remember() {
+	zoomed, _, _ := procIsZoomed.Call(uintptr(z.hwnd))
+	iconic, _, _ := procIsIconic.Call(uintptr(z.hwnd))
+	if zoomed != 0 || iconic != 0 {
 		return
 	}
 	r := z.rect()
 	w, h := r.Right-r.Left, r.Bottom-r.Top
-	zoomed, _, _ := procIsZoomed.Call(uintptr(z.hwnd))
-	if zoomed != 0 || (z.lastW != 0 && (abs32(w-z.lastW) > 4 || abs32(h-z.lastH) > 4)) {
-		// They resized or maximized it: keep their size from now on.
-		z.userSized = true
-		if zoomed == 0 {
-			dpi, _, _ := procGetDpiForWindow.Call(uintptr(z.hwnd))
-			if dpi == 0 {
-				dpi = 96
-			}
-			p := loadPrefs()
-			p.Width, p.Height = int(w)*96/int(dpi), int(h)*96/int(dpi)
-			savePrefs(p)
-		}
+	if abs32(w-z.lastW) <= 2 && abs32(h-z.lastH) <= 2 {
 		return
 	}
-	size, ok := pageSizes[page]
-	if !ok {
-		size = pageSizes["status"]
-	}
-	z.resize(size[0], size[1])
+	z.lastW, z.lastH = w, h
+	p := loadPrefs()
+	p.Width, p.Height = int(w)*96/z.dpi(), int(h)*96/z.dpi()
+	savePrefs(p)
 }
 
 // resize sets the outer size (DIPs), keeping the window's center where it
 // is and the whole window on its screen.
 func (z *sizer) resize(dw, dh int) {
 	r := z.rect()
-	w, h := z.scale(dw), z.scale(dh)
+	w, h := int32(dw*z.dpi()/96), int32(dh*z.dpi()/96)
 	cx, cy := (r.Left+r.Right)/2, (r.Top+r.Bottom)/2
 	x, y := cx-w/2, cy-h/2
 	if work, ok := z.workArea(); ok {
@@ -272,6 +267,34 @@ func (z *sizer) workArea() (winRect, bool) {
 		return winRect{}, false
 	}
 	return mi.Work, true
+}
+
+// setWindowIcons gives the window its icon at the sizes Windows wants for
+// this display (the taskbar uses the big one).
+func setWindowIcons(h windows.HWND) {
+	const wmSetIcon, iconSmall, iconBig = 0x0080, 0, 1
+	const imageIcon, smCxIcon, smCxSmIcon = 1, 11, 49
+	inst, err := windowsModule()
+	if err != nil {
+		return
+	}
+	dpi, _, _ := procGetDpiForWindow.Call(uintptr(h))
+	if dpi == 0 {
+		dpi = 96
+	}
+	for _, v := range []struct{ which, metric uintptr }{{iconBig, smCxIcon}, {iconSmall, smCxSmIcon}} {
+		size, _, _ := procGetSystemMetricsD.Call(v.metric, dpi)
+		icon, _, _ := procLoadImageW.Call(uintptr(inst), 1, imageIcon, size, size, 0)
+		if icon != 0 {
+			procSendMessageW.Call(uintptr(h), wmSetIcon, v.which, icon)
+		}
+	}
+}
+
+func windowsModule() (windows.Handle, error) {
+	var h windows.Handle
+	err := windows.GetModuleHandleEx(0, nil, &h)
+	return h, err
 }
 
 func abs32(v int32) int32 {

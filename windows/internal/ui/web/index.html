@@ -162,7 +162,6 @@ let page = "__START_PAGE__", status = null, logNext = 0, logEntries = [], logTim
 
 function showPage(p) {
   page = p;
-  obFit(p);
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("sel", b.dataset.page === p));
   document.querySelectorAll(".page").forEach(s => s.classList.toggle("sel", s.id === "page-" + p));
   if (p === "log") startLog(); else stopLog();
