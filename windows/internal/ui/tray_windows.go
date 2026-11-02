@@ -7,9 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
+	"sync"
 	"time"
 
-	"fyne.io/systray"
 	"golang.org/x/sys/windows"
 
 	"github.com/aayy-dev/OpenBars/windows/internal/core"
@@ -29,6 +30,13 @@ var Version = "dev"
 // Run starts the tray app, or brings the running one's window up.
 func Run(version, page string) error {
 	Version = version
+	// A different version run from outside Program Files offers to update
+	// the installed copy (which also replaces a running tray app).
+	if exe, err := os.Executable(); err == nil && install.Installed() && !strings.EqualFold(exe, install.Exe()) {
+		if installed := install.InstalledVersion(); installed != version {
+			return offerUpdate(installed, version)
+		}
+	}
 	name, _ := windows.UTF16PtrFromString(instanceMutex)
 	mu, err := windows.CreateMutex(nil, false, name)
 	if errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
@@ -52,7 +60,7 @@ func Run(version, page string) error {
 	if page != "" {
 		go openWindow(page)
 	}
-	systray.Run(onReady, func() {})
+	runTray()
 	return nil
 }
 
@@ -79,6 +87,30 @@ func offerInstall() bool {
 		os.Exit(0)
 	}
 	return true
+}
+
+// offerUpdate installs this version over the installed one, then hands
+// over to the newly installed tray app.
+func offerUpdate(installed, version string) error {
+	from := installed
+	if from == "" {
+		from = "the installed version"
+	}
+	if winutil.MessageBox("Open Bars", fmt.Sprintf("Update Open Bars from %s to %s?", from, version),
+		winutil.MBYesNo|winutil.MBIconInfo) != winutil.IDYes {
+		return nil
+	}
+	code, err := winutil.RunElevated("install")
+	switch {
+	case errors.Is(err, winutil.ErrCancelled):
+		return nil
+	case err != nil:
+		return fmt.Errorf("couldn't update: %w", err)
+	case code != 0:
+		return fmt.Errorf("updating didn't finish (code %d); run “OpenBars.exe install” as administrator to see why", code)
+	}
+	startDetached(install.Exe(), "tray", "--show")
+	return nil
 }
 
 func signalShow() {
@@ -116,95 +148,106 @@ func status() (core.Status, error) {
 	return s, err
 }
 
-func onReady() {
-	systray.SetIcon(iconWaiting)
-	systray.SetTooltip("Open Bars")
-	systray.SetOnTapped(func() { openWindow("status") })
+// Menu item IDs.
+const (
+	miStatus = iota + 1
+	miOpen
+	miAuto
+	miConnect
+	miDisconnect
+	miPair
+	miLog
+	miDiagnose
+	miQuit
+)
 
-	mStatus := systray.AddMenuItem("Open Bars", "")
-	mStatus.Disable()
-	mOpen := systray.AddMenuItem("Open Open Bars", "")
-	systray.AddSeparator()
-	mAuto := systray.AddMenuItemCheckbox("Connect automatically", "Connect whenever this PC is on the iPhone's hotspot", true)
-	mConnect := systray.AddMenuItem("Connect now", "")
-	mDisconnect := systray.AddMenuItem("Disconnect", "")
-	mPair := systray.AddMenuItem("Pair with iPhone…", "")
-	systray.AddSeparator()
-	mLog := systray.AddMenuItem("Show log", "")
-	mDiag := systray.AddMenuItem("Diagnose", "")
-	systray.AddSeparator()
-	mQuit := systray.AddMenuItem("Quit (the connection keeps working)", "")
-	mDisconnect.Hide()
+var (
+	trayMu     sync.Mutex
+	trayStatus core.Status
+	trayErr    error
+)
 
-	update := func() {
-		s, err := status()
-		if err != nil {
-			systray.SetIcon(iconProblem)
-			systray.SetTooltip("Open Bars: the service isn't running")
-			mStatus.SetTitle("Open Bars service isn't running")
-			return
-		}
-		systray.SetIcon(iconFor(s.Phase))
-		systray.SetTooltip("Open Bars: " + s.Title)
-		mStatus.SetTitle(s.Title)
-		if s.AutoConnect {
-			mAuto.Check()
-		} else {
-			mAuto.Uncheck()
-		}
-		if s.Paired {
-			mPair.Hide()
-			mAuto.Enable()
-		} else {
-			mPair.Show()
-			mAuto.Disable()
-		}
-		up := s.Tunnel != nil
-		if up {
-			mConnect.Hide()
-			mDisconnect.Show()
-		} else {
-			mDisconnect.Hide()
-			mConnect.Show()
-			if s.Paired && s.Phase != core.NoHotspot {
-				mConnect.Enable()
-			} else {
-				mConnect.Disable()
-			}
-		}
-	}
-	update()
+// runTray shows the notification-area icon until Quit is chosen.
+func runTray() {
+	t := &TrayIcon{OnClick: func() { openWindow("status") }}
+	t.Menu = trayMenu
+	t.OnMenu = func(id uint32) { trayCommand(t, id) }
+	t.SetIcon(iconWaiting, "Open Bars")
 	go func() {
-		t := time.NewTicker(2 * time.Second)
-		defer t.Stop()
 		for {
-			select {
-			case <-t.C:
-				update()
-			case <-mOpen.ClickedCh:
-				openWindow("status")
-			case <-mAuto.ClickedCh:
-				call(ipc.OpSetAuto, ipc.Request{On: !mAuto.Checked()}, nil, 5*time.Second)
-				update()
-			case <-mConnect.ClickedCh:
-				call(ipc.OpConnect, ipc.Request{}, nil, 5*time.Second)
-				update()
-			case <-mDisconnect.ClickedCh:
-				call(ipc.OpDisconnect, ipc.Request{}, nil, 5*time.Second)
-				update()
-			case <-mPair.ClickedCh:
-				openWindow("status")
-			case <-mLog.ClickedCh:
-				openWindow("log")
-			case <-mDiag.ClickedCh:
-				openWindow("diagnose")
-			case <-mQuit.ClickedCh:
-				closeWindow()
-				systray.Quit()
-				return
-			}
+			refreshTray(t)
+			time.Sleep(2 * time.Second)
 		}
 	}()
+	t.Run()
+}
+
+func refreshTray(t *TrayIcon) {
+	s, err := status()
+	trayMu.Lock()
+	trayStatus, trayErr = s, err
+	trayMu.Unlock()
+	if err != nil {
+		t.SetIcon(iconProblem, "Open Bars: the service isn't running")
+		return
+	}
+	t.SetIcon(iconFor(s.Phase), "Open Bars: "+s.Title)
+}
+
+func trayMenu() []MenuItem {
+	trayMu.Lock()
+	s, err := trayStatus, trayErr
+	trayMu.Unlock()
+	title := s.Title
+	if err != nil {
+		title = "Open Bars service isn't running"
+	}
+	items := []MenuItem{
+		{ID: miStatus, Title: title, Disabled: true},
+		{ID: miOpen, Title: "Open Open Bars"},
+		{},
+	}
+	if s.Paired {
+		items = append(items, MenuItem{ID: miAuto, Title: "Connect automatically", Checked: s.AutoConnect})
+		if s.Tunnel != nil {
+			items = append(items, MenuItem{ID: miDisconnect, Title: "Disconnect"})
+		} else {
+			items = append(items, MenuItem{ID: miConnect, Title: "Connect now", Disabled: s.Phase == core.NoHotspot})
+		}
+	} else {
+		items = append(items, MenuItem{ID: miPair, Title: "Pair with iPhone…", Disabled: err != nil})
+	}
+	return append(items, MenuItem{},
+		MenuItem{ID: miLog, Title: "Show log"},
+		MenuItem{ID: miDiagnose, Title: "Diagnose"},
+		MenuItem{},
+		MenuItem{ID: miQuit, Title: "Quit (the connection keeps working)"},
+	)
+}
+
+func trayCommand(t *TrayIcon, id uint32) {
+	switch id {
+	case miOpen, miPair:
+		openWindow("status")
+	case miAuto:
+		trayMu.Lock()
+		on := !trayStatus.AutoConnect
+		trayMu.Unlock()
+		call(ipc.OpSetAuto, ipc.Request{On: on}, nil, 5*time.Second)
+	case miConnect:
+		call(ipc.OpConnect, ipc.Request{}, nil, 5*time.Second)
+	case miDisconnect:
+		call(ipc.OpDisconnect, ipc.Request{}, nil, 5*time.Second)
+	case miLog:
+		openWindow("log")
+	case miDiagnose:
+		openWindow("diagnose")
+	case miQuit:
+		closeWindow()
+		t.Quit()
+		return
+	}
+	refreshTray(t)
 }
 
 func iconFor(p core.Phase) []byte {

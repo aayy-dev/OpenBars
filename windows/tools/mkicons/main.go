@@ -2,7 +2,7 @@
 //   - internal/ui/icons/tray-*.ico: signal bars drawn as vectors (crisp at
 //     16 px) in green (connected), half green (connecting), orange (problem)
 //     and gray (waiting/off);
-//   - winres/app.ico: the app icon scaled from the Mac one.
+//   - winres/app.ico and app-*.png: the app icon, the same green bars.
 //
 // Run from windows/: go run ./tools/mkicons
 package main
@@ -49,16 +49,11 @@ func main() {
 		must(writeICO(filepath.Join(trayDir, "tray-"+name+".ico"), frames))
 	}
 
-	src, err := os.Open(filepath.Join("..", "ios-app", "OpenBars", "Resources", "Assets.xcassets", "AppIcon.appiconset", "mac-1024.png"))
-	must(err)
-	big, err := png.Decode(src)
-	src.Close()
-	must(err)
+	// The app icon is the "connected" bars on a transparent background, so
+	// the taskbar, Start menu and tray all show the same mark.
 	var frames []image.Image
 	for _, s := range []int{16, 20, 24, 32, 40, 48, 64, 96, 128, 256} {
-		dst := image.NewNRGBA(image.Rect(0, 0, s, s))
-		draw.CatmullRom.Scale(dst, dst.Bounds(), big, big.Bounds(), draw.Over, nil)
-		frames = append(frames, dst)
+		frames = append(frames, bars(s, 4, green))
 	}
 	must(os.MkdirAll("winres", 0o755))
 	must(writeICO(filepath.Join("winres", "app.ico"), frames))

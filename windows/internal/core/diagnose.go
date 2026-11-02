@@ -80,7 +80,7 @@ func (c *Controller) Diagnose(ctx context.Context) []Check {
 	add(Check{ID: "paired", Title: "Paired with this iPhone", State: "ok", Detail: fmt.Sprintf("Known as “%s”, %s.", p.DeviceName, p.Address)})
 
 	if st.AutoConnect {
-		add(Check{ID: "auto", Title: "Connects automatically", State: "ok", Detail: "On " + phoneLabel(p) + "’s hotspot."})
+		add(Check{ID: "auto", Title: "Connects automatically", State: "ok", Detail: "Whenever this PC joins " + phonePlain(p) + "’s hotspot."})
 	} else {
 		add(Check{ID: "auto", Title: "Connects automatically", State: "warning", Detail: "Automatic connect is off.", Action: "auto"})
 	}

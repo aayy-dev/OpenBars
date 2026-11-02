@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
@@ -84,6 +85,9 @@ func Install(version string, out io.Writer) error {
 		fmt.Fprintln(out, "Stopping the running Open Bars service…")
 		stop(s)
 	}
+
+	// The old tray app runs from the installed exe; close it so the files can be replaced.
+	stopInstalledProcesses()
 
 	dir := Dir()
 	if !strings.EqualFold(filepath.Clean(srcDir), filepath.Clean(dir)) {
@@ -280,4 +284,45 @@ func copyFile(from, to string) error {
 		defer os.Remove(old) // fails harmlessly while the old copy still runs
 	}
 	return os.Rename(tmp, to)
+}
+
+// InstalledVersion is the version recorded in Settings › Apps ("" if none).
+func InstalledVersion() string {
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, uninstallKey, registry.QUERY_VALUE)
+	if err != nil {
+		return ""
+	}
+	defer k.Close()
+	v, _, _ := k.GetStringValue("DisplayVersion")
+	return v
+}
+
+// stopInstalledProcesses ends every process running the installed exe
+// (other than this one), e.g. the old tray app during an update.
+func stopInstalledProcesses() {
+	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return
+	}
+	defer windows.CloseHandle(snap)
+	self := windows.GetCurrentProcessId()
+	var pe windows.ProcessEntry32
+	pe.Size = uint32(unsafe.Sizeof(pe))
+	for err = windows.Process32First(snap, &pe); err == nil; err = windows.Process32Next(snap, &pe) {
+		if pe.ProcessID == self || !strings.EqualFold(windows.UTF16ToString(pe.ExeFile[:]), exeName) {
+			continue
+		}
+		h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION|windows.PROCESS_TERMINATE, false, pe.ProcessID)
+		if err != nil {
+			continue
+		}
+		buf := make([]uint16, windows.MAX_PATH)
+		n := uint32(len(buf))
+		if windows.QueryFullProcessImageName(h, 0, &buf[0], &n) == nil &&
+			strings.EqualFold(filepath.Clean(windows.UTF16ToString(buf[:n])), filepath.Clean(Exe())) {
+			windows.TerminateProcess(h, 0)
+			windows.WaitForSingleObject(h, 5000)
+		}
+		windows.CloseHandle(h)
+	}
 }

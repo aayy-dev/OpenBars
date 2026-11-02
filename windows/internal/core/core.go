@@ -214,7 +214,7 @@ func (c *Controller) Status() Status {
 	s.DeviceName = c.cfg.DeviceName
 	s.About = c.cfg.About
 	if p := c.st.Pairing; p != nil {
-		s.PhoneName, s.Address, s.Address6, s.Endpoint = c.phoneNameLocked(), p.Address, p.Address6, p.Endpoint
+		s.PhoneName, s.Address, s.Address6, s.Endpoint = c.phonePlainLocked(), p.Address, p.Address6, p.Endpoint
 		if p.DeviceName != "" {
 			s.DeviceName = p.DeviceName
 		}
@@ -360,7 +360,7 @@ func (c *Controller) Pair(ctx context.Context) (msg, hint string, err error) {
 		addr += ", " + p.Address6
 	}
 	c.log.Infof("pair", "Paired as %q with %s: tunnel address %s, iPhone at %s", p.DeviceName, phoneLabel(p), addr, p.Endpoint)
-	return fmt.Sprintf("Paired with %s.", phoneLabel(p)), "", err
+	return fmt.Sprintf("Paired with %s.", phonePlain(p)), "", err
 }
 
 // evaluate looks at the network and decides what the tunnel should do.
@@ -383,7 +383,7 @@ func (c *Controller) evaluate(ctx context.Context) {
 	c.mu.Lock()
 	st := c.st
 	want := (st.AutoConnect && !c.userOff) || c.manual
-	phoneName := c.phoneNameLocked()
+	phoneName := c.phonePlainLocked()
 	nextTry := c.nextTry
 	c.mu.Unlock()
 
@@ -396,11 +396,11 @@ func (c *Controller) evaluate(ctx context.Context) {
 		c.setPhase(NoHotspot, "Waiting for "+phoneName+"’s hotspot",
 			"Open Bars connects when this PC joins it.", "")
 	case !want:
-		c.down("automatic connect is off")
-		title := "Automatic connect is off"
+		reason, title := "automatic connect is off", "Automatic connect is off"
 		if st.AutoConnect {
-			title = "Disconnected"
+			reason, title = "you disconnected", "Disconnected"
 		}
+		c.down(reason)
 		c.setPhase(Off, title, "On "+phoneName+"’s hotspot. Choose Connect now to use it.", "")
 	case c.cfg.Tunnel.Running():
 		c.watchTunnel(ctx, hs, st, now)
@@ -455,7 +455,7 @@ func (c *Controller) connect(ctx context.Context, hs hotspot.Iface, st state.Sta
 		phase := Problem
 		title := "Couldn't reach the iPhone"
 		if errors.Is(err, phone.ErrUnreachable) {
-			phase, title = NotSharing, "Open Bars isn't sharing on "+phoneLabel(*st.Pairing)
+			phase, title = NotSharing, "Open Bars isn't sharing on "+phonePlain(*st.Pairing)
 		}
 		c.setPhase(phase, title, msg, hint)
 		c.log.Add(applog.Warn, "pair", "Checking with the iPhone failed: "+msg, hint)
@@ -470,7 +470,7 @@ func (c *Controller) connect(ctx context.Context, hs hotspot.Iface, st state.Sta
 		c.mu.Unlock()
 	}
 
-	c.setPhase(Connecting, "Connecting to "+phoneLabel(p)+"…", "", "")
+	c.setPhase(Connecting, "Connecting to "+phonePlain(p)+"…", "", "")
 	err = c.cfg.Tunnel.Up(TunnelConfig{PrivateKey: st.PrivateKey, Pairing: p, Hotspot: hs})
 	if err != nil {
 		c.retryLater(now, 30*time.Second)
@@ -503,7 +503,7 @@ func (c *Controller) watchTunnel(ctx context.Context, hs hotspot.Iface, st state
 		c.boundIndex = hs.Index
 	}
 	ts := c.cfg.Tunnel.Stats()
-	name := phoneLabel(*st.Pairing)
+	name := phonePlain(*st.Pairing)
 	if ts.LastHandshake == 0 {
 		if now.Sub(c.upAt) > handshakeGrace && !c.handshakeWarn {
 			c.handshakeWarn = true
@@ -612,6 +612,22 @@ func (c *Controller) phoneNameLocked() string {
 	return phoneLabel(*c.st.Pairing)
 }
 
+// phonePlain is the iPhone's name for titles ("Aayush’s iPhone").
+func phonePlain(p phone.Pairing) string {
+	if p.HotspotName == "" {
+		return "the iPhone"
+	}
+	return p.HotspotName
+}
+
+func (c *Controller) phonePlainLocked() string {
+	if c.st.Pairing == nil {
+		return "the iPhone"
+	}
+	return phonePlain(*c.st.Pairing)
+}
+
+// phoneLabel is the iPhone's name in quotes, for log lines.
 func phoneLabel(p phone.Pairing) string {
 	if p.HotspotName == "" {
 		return "the iPhone"

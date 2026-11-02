@@ -205,6 +205,9 @@ func TestDisconnectHoldsUntilRejoin(t *testing.T) {
 	if r.tun.running || r.c.Status().Phase != Off {
 		t.Fatalf("still connected after Disconnect: %+v", r.c.Status())
 	}
+	if !strings.Contains(r.logText(), "Tunnel down (you disconnected)") {
+		t.Fatalf("wrong reason:\n%s", r.logText())
+	}
 	r.step(time.Minute)
 	if r.tun.running {
 		t.Fatal("reconnected while still on the same hotspot")
