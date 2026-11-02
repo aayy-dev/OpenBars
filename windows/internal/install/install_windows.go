@@ -253,7 +253,7 @@ func shortcutPath() string {
 
 // startMenuShortcut uses PowerShell's WScript.Shell to make the .lnk.
 func startMenuShortcut(exe string) error {
-	script := fmt.Sprintf(`$s=(New-Object -ComObject WScript.Shell).CreateShortcut('%s');$s.TargetPath='%s';$s.Arguments='tray';$s.WorkingDirectory='%s';$s.Description='Open Bars Connect';$s.Save()`,
+	script := fmt.Sprintf(`$s=(New-Object -ComObject WScript.Shell).CreateShortcut('%s');$s.TargetPath='%s';$s.Arguments='tray --show';$s.WorkingDirectory='%s';$s.Description='Open Bars Connect';$s.Save()`,
 		psQuote(shortcutPath()), psQuote(exe), psQuote(filepath.Dir(exe)))
 	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: windows.CREATE_NO_WINDOW}

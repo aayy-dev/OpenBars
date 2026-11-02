@@ -30,8 +30,10 @@ import (
 var indexHTML string
 
 var (
-	winMu sync.Mutex
-	win   webview2.WebView
+	winMu    sync.Mutex
+	win      webview2.WebView
+	opening  bool   // a window is being created
+	wantPage string // page to show once it exists
 )
 
 // openWindow shows the Open Bars window on a page (status, log, diagnose),
@@ -39,6 +41,13 @@ var (
 // dedicated OS thread.
 func openWindow(page string) {
 	winMu.Lock()
+	if opening {
+		// Clicked again while the window is still being created: show this
+		// page when it's ready instead of opening a second window.
+		wantPage = page
+		winMu.Unlock()
+		return
+	}
 	if win != nil {
 		w := win
 		winMu.Unlock()
@@ -49,9 +58,15 @@ func openWindow(page string) {
 		})
 		return
 	}
+	opening, wantPage = true, page
 	winMu.Unlock()
 	go func() {
 		runtime.LockOSThread()
+		defer func() {
+			winMu.Lock()
+			opening, win = false, nil
+			winMu.Unlock()
+		}()
 		dataDir := filepath.Join(os.Getenv("LOCALAPPDATA"), "Open Bars", "WebView2")
 		w := webview2.NewWithOptions(webview2.WebViewOptions{
 			DataPath:  dataDir,
@@ -92,10 +107,11 @@ func openWindow(page string) {
 		w.Init(`document.addEventListener("contextmenu", e => {
 			if (!(e.target.closest("input, .log") || String(getSelection()))) e.preventDefault();
 		});`)
-		w.SetHtml(strings.Replace(indexHTML, "__START_PAGE__", page, 1))
 		winMu.Lock()
-		win = w
+		start := wantPage
+		win, opening = w, false
 		winMu.Unlock()
+		w.SetHtml(strings.Replace(indexHTML, "__START_PAGE__", start, 1))
 		w.Run()
 		winMu.Lock()
 		win = nil

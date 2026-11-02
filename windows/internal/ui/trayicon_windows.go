@@ -61,7 +61,6 @@ const (
 	wmDestroy     = 0x0002
 	wmClose       = 0x0010
 	wmContextMenu = 0x007B
-	wmLButtonUp   = 0x0202
 	ninSelect     = 0x0400
 	ninKeySelect  = 0x0401
 
@@ -277,7 +276,7 @@ func trayWndProc(hwnd windows.HWND, message uint32, wParam, lParam uintptr) uint
 		switch uint32(lParam & 0xffff) {
 		case wmContextMenu:
 			t.showMenu(int32(int16(wParam&0xffff)), int32(int16(wParam>>16&0xffff)))
-		case ninSelect, ninKeySelect, wmLButtonUp:
+		case ninSelect, ninKeySelect: // version 4 also sends WM_LBUTTONUP for the same click; ignore that
 			if t.OnClick != nil {
 				go t.OnClick()
 			}
