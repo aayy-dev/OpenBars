@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,7 +32,9 @@ const (
 	exeName      = "OpenBars.exe"
 )
 
-// files that ship next to the exe and get installed with it.
+// files installed next to the exe. Each comes from the running exe's
+// folder (a zip or dev build) or from the copy built into the exe (release
+// builds, see bundle_windows.go).
 var payload = []string{"wintun.dll", "LICENSE.txt", "THIRD_PARTY_NOTICES.txt", "wintun-LICENSE.txt"}
 
 // Dir is where Open Bars is installed.
@@ -70,7 +73,7 @@ func Install(version string, out io.Writer) error {
 		return err
 	}
 	srcDir := filepath.Dir(src)
-	if _, err := os.Stat(filepath.Join(srcDir, "wintun.dll")); err != nil {
+	if !havePayload(srcDir, "wintun.dll") {
 		return errors.New("wintun.dll must be in the same folder as OpenBars.exe")
 	}
 	m, err := mgr.Connect()
@@ -98,7 +101,7 @@ func Install(version string, out io.Writer) error {
 			return fmt.Errorf("copy OpenBars.exe: %w", err)
 		}
 		for _, f := range payload {
-			if err := copyFile(filepath.Join(srcDir, f), filepath.Join(dir, f)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			if err := installPayload(srcDir, f, filepath.Join(dir, f)); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return fmt.Errorf("copy %s: %w", f, err)
 			}
 		}
@@ -265,12 +268,41 @@ func startMenuShortcut(exe string) error {
 
 func psQuote(s string) string { return strings.ReplaceAll(s, "'", "''") }
 
+// havePayload reports whether name is next to the exe or built into it.
+func havePayload(srcDir, name string) bool {
+	if _, err := os.Stat(filepath.Join(srcDir, name)); err == nil {
+		return true
+	}
+	_, err := fs.Stat(bundled, name)
+	return err == nil
+}
+
+// installPayload copies name from srcDir, or else writes the built-in copy
+// unchanged. It returns an os.ErrNotExist error if there's neither.
+func installPayload(srcDir, name, to string) error {
+	err := copyFile(filepath.Join(srcDir, name), to)
+	if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	in, ferr := bundled.Open(name)
+	if ferr != nil {
+		return err
+	}
+	defer in.Close()
+	return writeFile(in, to)
+}
+
 func copyFile(from, to string) error {
 	in, err := os.Open(from)
 	if err != nil {
 		return err
 	}
 	defer in.Close()
+	return writeFile(in, to)
+}
+
+// writeFile replaces to with the contents of in, by way of a temporary file.
+func writeFile(in io.Reader, to string) error {
 	tmp := to + ".new"
 	out, err := os.Create(tmp)
 	if err != nil {

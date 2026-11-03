@@ -12,8 +12,8 @@ Requires Windows 10 or 11 (x64 or ARM64) and the Microsoft Edge WebView2 Runtime
 
 ## Install
 
-1. Download `OpenBars-windows-<arch>-<version>.zip` and unzip it anywhere.
-2. Run `OpenBars.exe` and allow the install prompt (administrator).
+1. From [Releases](https://github.com/aayy-dev/OpenBars/releases), download `OpenBars-windows-x64-<version>.exe` (or `-arm64-` for ARM PCs).
+2. Run it and allow the install prompt (administrator). It's a single file: the Wintun driver DLL and the licenses are built in and get installed next to it.
 
 The installer:
 
@@ -67,7 +67,7 @@ It stops at the first broken link and says what to do.
 On macOS or Linux, with Go installed:
 
 ```sh
-windows/build.sh 1.0.0          # dist/OpenBars-windows-{amd64,arm64}-1.0.0.zip
+windows/build.sh 1.0.0          # dist/OpenBars-windows-{x64,arm64}-1.0.0.exe
 DEV=1 windows/build.sh dev      # console build: output shows up in terminals and over SSH
 ```
 
@@ -76,7 +76,7 @@ The script:
 - downloads Wintun 0.14.1 from wintun.net and checks its SHA-256;
 - embeds the icon and manifest with go-winres;
 - writes `THIRD_PARTY_NOTICES.txt` from the modules actually linked;
-- cross-compiles with `CGO_ENABLED=0`.
+- cross-compiles with `CGO_ENABLED=0` and `-tags bundle`, which builds `wintun.dll` and the license files into the exe (unchanged; the installer writes them out next to it). `dist/amd64/` and `dist/arm64/` also have the exe with those files beside it.
 
 `go run ./tools/mkicons` redraws the tray and app icons.
 
@@ -90,7 +90,6 @@ For testing over SSH, run these with a `DEV=1` build:
 ## Known limits
 
 - **DNS can leak.** Windows may also send DNS queries to the hotspot's resolver ("smart multi-homed name resolution"). The tunnel's adapter has the lowest metric, so its DNS is preferred, but there's no firewall-level DNS leak protection yet.
-- **Device type.** The iPhone shows the PC as a generic device until its Open Bars accepts the `windows` device kind.
 - **No real installer yet.** There's no MSI/MSIX and no code signing.
 
 "WireGuard" and the "WireGuard" logo are registered trademarks of Jason A. Donenfeld.

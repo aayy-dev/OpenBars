@@ -1,2 +1,3 @@
 dist/
 cmd/openbars/rsrc_*.syso
+internal/install/bundle/

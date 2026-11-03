@@ -1,6 +1,8 @@
 #!/bin/sh
 # Builds Open Bars Connect for Windows from macOS or Linux (pure Go, no cgo):
-#   dist/OpenBars-windows-<arch>-<version>.zip  (OpenBars.exe, wintun.dll, licenses)
+#   dist/OpenBars-windows-<x64|arm64>-<version>.exe  one file: wintun.dll and
+#                                                     the licenses are built in
+#   dist/<amd64|arm64>/  the same exe with those files next to it
 #
 # usage: windows/build.sh [version]     (default: dev)
 #        DEV=1 windows/build.sh         console build, so output shows in terminals/SSH
@@ -31,14 +33,18 @@ go run ./tools/notices "$CACHE/THIRD_PARTY_NOTICES.txt" "$CACHE/wintun/LICENSE.t
 
 ldflags="-s -w -X main.version=$VERSION"
 [ "${DEV:-}" = 1 ] || ldflags="$ldflags -H windowsgui"
+bundle=internal/install/bundle # embedded by -tags bundle (bundle_windows.go)
+trap 'rm -rf "$bundle"' EXIT
 for arch in amd64 arm64; do
   out="dist/$arch"
-  rm -rf "$out" && mkdir -p "$out"
-  CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -ldflags "$ldflags" -o "$out/OpenBars.exe" ./cmd/openbars
-  cp "$CACHE/wintun/bin/$arch/wintun.dll" "$out/"
-  cp "$CACHE/wintun/LICENSE.txt" "$out/wintun-LICENSE.txt"
-  cp ../LICENSE "$out/LICENSE.txt"
-  cp "$CACHE/THIRD_PARTY_NOTICES.txt" "$out/"
-  (cd "$out" && rm -f "../OpenBars-windows-$arch-$VERSION.zip" && zip -q -X "../OpenBars-windows-$arch-$VERSION.zip" *)
-  echo "dist/OpenBars-windows-$arch-$VERSION.zip"
+  rm -rf "$out" "$bundle" && mkdir -p "$out" "$bundle"
+  cp "$CACHE/wintun/bin/$arch/wintun.dll" "$bundle/"
+  cp "$CACHE/wintun/LICENSE.txt" "$bundle/wintun-LICENSE.txt"
+  cp ../LICENSE "$bundle/LICENSE.txt"
+  cp "$CACHE/THIRD_PARTY_NOTICES.txt" "$bundle/"
+  CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -tags bundle -ldflags "$ldflags" -o "$out/OpenBars.exe" ./cmd/openbars
+  cp "$bundle"/* "$out/"
+  name="OpenBars-windows-$(echo $arch | sed s/amd64/x64/)-$VERSION"
+  cp "$out/OpenBars.exe" "dist/$name.exe"
+  echo "dist/$name.exe"
 done
