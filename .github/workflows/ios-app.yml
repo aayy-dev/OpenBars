@@ -19,7 +19,9 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-26 # Xcode 26+: needed for AppIcon.icon (Icon Composer)
+    # Xcode 27 (a preview image for now): the widgets use iOS 27 APIs, and
+    # AppIcon.icon (Icon Composer) needs Xcode 26 or later.
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v4
 
@@ -62,7 +64,8 @@ jobs:
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             build 2>&1 | tee build.log | grep -E "error:|/Sources/.*\.swift:.*warning:|BUILD (SUCCEEDED|FAILED)" || true
-          test -d build/Build/Products/Release-iphoneos/OpenBars.app || { tail -100 build.log; exit 1; }
+          # A failed build can still leave a partial OpenBars.app behind.
+          grep -q "BUILD SUCCEEDED" build.log || { tail -100 build.log; exit 1; }
 
       - name: Package .ipa
         working-directory: ios-app/OpenBars
