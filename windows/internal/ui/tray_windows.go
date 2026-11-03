@@ -34,6 +34,9 @@ func Run(version, page string) error {
 	// the installed copy (which also replaces a running tray app).
 	if exe, err := os.Executable(); err == nil && install.Installed() && !strings.EqualFold(exe, install.Exe()) {
 		if installed := install.InstalledVersion(); installed != version {
+			if err := install.CheckFiles(); err != nil {
+				return err
+			}
 			return offerUpdate(installed, version)
 		}
 	}
@@ -49,6 +52,9 @@ func Run(version, page string) error {
 	defer windows.CloseHandle(mu)
 
 	if !install.Installed() {
+		if err := install.CheckFiles(); err != nil {
+			return err // shown in a message box by main
+		}
 		if !offerInstall() {
 			return nil
 		}

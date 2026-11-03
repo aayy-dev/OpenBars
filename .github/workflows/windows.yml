@@ -1,0 +1,92 @@
+name: Windows app (Open Bars)
+
+# Builds Open Bars for Windows (x64 and ARM64) on every push that touches it:
+#   OpenBars-windows-<arch>-<version>.exe  one file, wintun.dll built in
+#   OpenBars-windows-<arch>-<version>.zip  OpenBars.exe with wintun.dll next to it
+# Both are kept as the run's artifact. Nothing is published.
+#
+# Signing: run it by hand with "sign" ticked. The unsigned artifact goes to
+# SignPath, which checks it was built here from this repo, signs it, and the
+# signed files come back as a second artifact. Needs these repository settings
+# (Settings > Secrets and variables > Actions):
+#   secret   SIGNPATH_API_TOKEN
+#   variable SIGNPATH_ORGANIZATION_ID
+#   variable SIGNPATH_PROJECT_SLUG
+#   variable SIGNPATH_SIGNING_POLICY_SLUG  (optional, default release-signing)
+# Which files get signed (the .exe files, and OpenBars.exe inside each .zip,
+# never wintun.dll) is set in the SignPath project's artifact configuration.
+
+on:
+  push:
+    paths:
+      - "windows/**"
+      - ".github/workflows/windows.yml"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version, for example 1.0.0-alpha.2 (blank: dev-<commit>)"
+        type: string
+        default: ""
+      sign:
+        description: "Sign with SignPath"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read # SignPath's action reads the run's artifact
+
+jobs:
+  build:
+    runs-on: ubuntu-latest # pure Go, cross-compiled
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: windows/go.mod
+          cache-dependency-path: windows/go.sum
+
+      - name: Vet
+        working-directory: windows
+        run: GOOS=windows GOARCH=amd64 go vet ./...
+
+      - name: Build
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          VERSION="${INPUT_VERSION:-dev-${GITHUB_SHA::7}}"
+          case "$VERSION" in *[!A-Za-z0-9.-]*) echo "::error::bad version: $VERSION"; exit 1;; esac
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          windows/build.sh "$VERSION"
+          ls -la windows/dist
+
+      - name: Upload unsigned
+        id: unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenBars-windows-${{ env.VERSION }}${{ inputs.sign && '-unsigned' || '' }}
+          path: |
+            windows/dist/OpenBars-windows-*.exe
+            windows/dist/OpenBars-windows-*.zip
+          if-no-files-found: error
+
+      - name: Sign with SignPath
+        if: github.event_name == 'workflow_dispatch' && inputs.sign
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - name: Upload signed
+        if: github.event_name == 'workflow_dispatch' && inputs.sign
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenBars-windows-${{ env.VERSION }}
+          path: signed/
+          if-no-files-found: error

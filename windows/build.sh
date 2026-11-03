@@ -2,7 +2,12 @@
 # Builds Open Bars Connect for Windows from macOS or Linux (pure Go, no cgo):
 #   dist/OpenBars-windows-<x64|arm64>-<version>.exe  one file: wintun.dll and
 #                                                     the licenses are built in
-#   dist/<amd64|arm64>/  the same exe with those files next to it
+#   dist/OpenBars-windows-<x64|arm64>-<version>.zip  OpenBars.exe without them,
+#                                                     and the files next to it
+#   dist/<amd64|arm64>/  the zip's contents
+# The zip's OpenBars.exe contains only Open Bars' own code, for code signing
+# services that sign only a project's own binaries (wintun.dll is already
+# signed by WireGuard LLC).
 #
 # usage: windows/build.sh [version]     (default: dev)
 #        DEV=1 windows/build.sh         console build, so output shows in terminals/SSH
@@ -42,9 +47,12 @@ for arch in amd64 arm64; do
   cp "$CACHE/wintun/LICENSE.txt" "$bundle/wintun-LICENSE.txt"
   cp ../LICENSE "$bundle/LICENSE.txt"
   cp "$CACHE/THIRD_PARTY_NOTICES.txt" "$bundle/"
-  CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -tags bundle -ldflags "$ldflags" -o "$out/OpenBars.exe" ./cmd/openbars
-  cp "$bundle"/* "$out/"
   name="OpenBars-windows-$(echo $arch | sed s/amd64/x64/)-$VERSION"
-  cp "$out/OpenBars.exe" "dist/$name.exe"
+  CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -tags bundle -ldflags "$ldflags" -o "dist/$name.exe" ./cmd/openbars
+  CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -ldflags "$ldflags" -o "$out/OpenBars.exe" ./cmd/openbars
+  cp "$bundle"/* "$out/"
+  rm -f "dist/$name.zip"
+  (cd "$out" && zip -q -X "../$name.zip" OpenBars.exe wintun.dll LICENSE.txt THIRD_PARTY_NOTICES.txt wintun-LICENSE.txt)
   echo "dist/$name.exe"
+  echo "dist/$name.zip"
 done

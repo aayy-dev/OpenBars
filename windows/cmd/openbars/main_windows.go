@@ -57,6 +57,12 @@ func main() {
 			os.Exit(1)
 		}
 	case "install":
+		// Before the UAC prompt: no point asking for administrator rights
+		// when wintun.dll is missing (e.g. opened from inside the zip).
+		if err := install.CheckFiles(); err != nil {
+			report(winutil.AttachParentConsole(), "Couldn't install Open Bars: "+err.Error())
+			os.Exit(1)
+		}
 		os.Exit(runAdmin("install", func() error { return install.Install(version, os.Stdout) }))
 	case "uninstall":
 		keep := slices.Contains(args, "--keep-data")

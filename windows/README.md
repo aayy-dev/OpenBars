@@ -67,7 +67,7 @@ It stops at the first broken link and says what to do.
 On macOS or Linux, with Go installed:
 
 ```sh
-windows/build.sh 1.0.0          # dist/OpenBars-windows-{x64,arm64}-1.0.0.exe
+windows/build.sh 1.0.0          # dist/OpenBars-windows-{x64,arm64}-1.0.0.{exe,zip}
 DEV=1 windows/build.sh dev      # console build: output shows up in terminals and over SSH
 ```
 
@@ -76,7 +76,11 @@ The script:
 - downloads Wintun 0.14.1 from wintun.net and checks its SHA-256;
 - embeds the icon and manifest with go-winres;
 - writes `THIRD_PARTY_NOTICES.txt` from the modules actually linked;
-- cross-compiles with `CGO_ENABLED=0` and `-tags bundle`, which builds `wintun.dll` and the license files into the exe (unchanged; the installer writes them out next to it). `dist/amd64/` and `dist/arm64/` also have the exe with those files beside it.
+- cross-compiles with `CGO_ENABLED=0` two ways:
+  - **`.exe`:** one file. `-tags bundle` builds `wintun.dll` and the license files into it, unchanged; the installer writes them out next to the installed exe.
+  - **`.zip`:** an `OpenBars.exe` with only Open Bars' own code, plus `wintun.dll` (signed by WireGuard LLC) and the license files beside it. Its contents are also in `dist/amd64/` and `dist/arm64/`. Opened from inside the zip without extracting, it says to use Extract All first.
+
+[`.github/workflows/windows.yml`](../.github/workflows/windows.yml) runs the same script on every push that touches `windows/`, and keeps both as the run's artifact. Run by hand with **sign** ticked, it sends them to SignPath for code signing; the workflow file lists the repository settings that needs.
 
 `go run ./tools/mkicons` redraws the tray and app icons.
 

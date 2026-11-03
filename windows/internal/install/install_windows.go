@@ -73,8 +73,8 @@ func Install(version string, out io.Writer) error {
 		return err
 	}
 	srcDir := filepath.Dir(src)
-	if !havePayload(srcDir, "wintun.dll") {
-		return errors.New("wintun.dll must be in the same folder as OpenBars.exe")
+	if err := CheckFiles(); err != nil {
+		return err
 	}
 	m, err := mgr.Connect()
 	if err != nil {
@@ -269,6 +269,33 @@ func startMenuShortcut(exe string) error {
 func psQuote(s string) string { return strings.ReplaceAll(s, "'", "''") }
 
 // havePayload reports whether name is next to the exe or built into it.
+// CheckFiles reports whether this exe can install: wintun.dll is built in
+// or next to it. Call it before asking for administrator rights.
+func CheckFiles() error {
+	src, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	if havePayload(filepath.Dir(src), "wintun.dll") {
+		return nil
+	}
+	// Opening the exe inside a zip in File Explorer runs a lone copy of it
+	// from a temporary folder, without the other files.
+	if inTemp(src) {
+		return errors.New("Open Bars is still inside the zip file. Right-click the zip, choose Extract All, then open OpenBars.exe in the folder that appears.")
+	}
+	return errors.New("wintun.dll must be in the same folder as OpenBars.exe. Extract all the files from the zip into one folder, then open OpenBars.exe again.")
+}
+
+func inTemp(path string) bool {
+	tmp, err := filepath.EvalSymlinks(os.TempDir())
+	if err != nil {
+		tmp = os.TempDir()
+	}
+	rel, err := filepath.Rel(tmp, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
 func havePayload(srcDir, name string) bool {
 	if _, err := os.Stat(filepath.Join(srcDir, name)); err == nil {
 		return true
