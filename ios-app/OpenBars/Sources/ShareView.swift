@@ -16,6 +16,7 @@ struct ShareView: View {
 
     var body: some View {
         NavigationStack {
+            ScrollViewReader { scroller in
             List {
                 Section {
                     StatusCard()
@@ -27,6 +28,10 @@ struct ShareView: View {
                 attentionSection
                 devicesSection
                 usageSection
+            }
+            #if DEBUG
+            .onAppear { showDemoScreen(scroller) }
+            #endif
             }
             .navigationTitle("Open Bars")
             .navigationBarTitleDisplayMode(.inline)
@@ -58,6 +63,22 @@ struct ShareView: View {
             .onAppear { store.refreshUsageSoon() }
         }
     }
+
+    #if DEBUG
+    /// Screenshot mode (see DemoMode): `-showAddDevice` opens Add Device,
+    /// `-showUsage` scrolls to the last 7 days of usage.
+    private func showDemoScreen(_ scroller: ScrollViewProxy) {
+        guard DemoMode.on else { return }
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("-showAddDevice") { sheet = .addDevice }
+        if args.contains("-showUsage") {
+            usageRange = .week
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                withAnimation(nil) { scroller.scrollTo("usageChart", anchor: .center) }
+            }
+        }
+    }
+    #endif
 
     // MARK: Sections
 
@@ -124,6 +145,7 @@ struct ShareView: View {
                         .font(.title2.weight(.semibold))
                     UsageBarChart(bars: bars, range: usageRange, devices: legend)
                 }
+                .id("usageChart")
                 .padding(.vertical, 4)
             } else {
                 Text(usageRange == .today ? "No data used through Open Bars today." : "No data used through Open Bars in this period.")

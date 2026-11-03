@@ -194,6 +194,13 @@ final class Store: ObservableObject {
     }()
 
     init() {
+        #if DEBUG
+        if DemoMode.on {
+            state = PersistedState(serverPrivateKey: WgcoreGeneratePrivateKey())
+            showDemo()
+            return
+        }
+        #endif
         state = Store.loadState() ?? PersistedState(serverPrivateKey: WgcoreGeneratePrivateKey())
         // The hotspot's Wi‑Fi name is the iPhone's name, so fill it in when iOS
         // tells us (needs Apple's device-name entitlement; see deviceName).
@@ -327,6 +334,9 @@ final class Store: ObservableObject {
     }
 
     func save() {
+        #if DEBUG
+        if DemoMode.on { return } // samples are never saved
+        #endif
         if let data = try? JSONEncoder().encode(state) {
             try? data.write(to: Store.fileURL, options: .atomic)
         }
@@ -457,6 +467,9 @@ final class Store: ObservableObject {
     // MARK: Polling
 
     func refresh() {
+        #if DEBUG
+        if DemoMode.on { return } // the samples stand in for the engine
+        #endif
         takePendingRequests()
         let since = samples.last?.t ?? 0
         let wantUsage = Date().timeIntervalSince(usageFetched) > 30
@@ -792,3 +805,71 @@ extension Store {
                 hint: "Check the shortcut name in Settings › Personal Hotspot, or add the shortcut again from there.")
     }
 }
+
+#if DEBUG
+// MARK: - Screenshot mode
+
+extension Store {
+    private static let demoDevices: [(name: String, kind: DeviceKind, wireGuardApp: Bool, perDay: Double, weight: Double, online: Bool)] = [
+        ("MacBook Air", .mac, false, 2_600_000_000, 0.55, true),
+        ("iPad", .ipad, false, 900_000_000, 0.15, true),
+        ("Gaming PC", .windows, false, 3_400_000_000, 0.30, true),
+        ("Travel Laptop", .laptop, true, 450_000_000, 0, false),
+    ]
+
+    /// Screenshot mode (see DemoMode): sharing with three of four sample
+    /// devices, with live speed and a month of usage.
+    fileprivate func showDemo() {
+        let now = Int64(Date().timeIntervalSince1970)
+        let all = Self.demoDevices
+        state.devices = all.enumerated().map { i, d in
+            Device(name: d.name, privateKey: d.wireGuardApp ? DemoMode.key(100 + i) : "",
+                   publicKey: DemoMode.key(i + 1), address: Store.devicePrefix + String(i + 2), kind: d.kind.rawValue)
+        }
+        state.settings.hotspotName = DemoMode.iPhoneName
+        state.settings.backgroundSharing = true
+        let peers = state.devices.enumerated().map { i, d in
+            PeerStatus(name: d.name, publicKey: d.publicKey, address: d.address,
+                       endpoint: "172.20.10.\(i + 2):\(51000 + i * 7)",
+                       lastHandshake: all[i].online ? now - 30 : now - 3 * 3600 - 600,
+                       rxBytes: Int64(all[i].perDay * 0.08), txBytes: Int64(all[i].perDay * 0.6),
+                       lastSeen: all[i].online ? now : now - 3 * 3600 - 600)
+        }
+        running = true
+        runningInBackground = true
+        status = CoreStatus(running: true, listenPort: 51820,
+                            net: NetInfo(hotspotIp: "172.20.10.1", cellularIf: "pdp_ip0", cellularIp: "10.48.112.7", defaultIf: "pdp_ip0"),
+                            egressIf: "pdp_ip0", tcpActive: 46, tcpTotal: 1873, udpFlows: 9,
+                            bytesUp: peers.reduce(0) { $0 + $1.rxBytes }, bytesDown: peers.reduce(0) { $0 + $1.txBytes },
+                            uptime: 2760, peers: peers)
+        samples = DemoMode.samples(peers: demoWeights)
+        usage = DemoMode.usage(
+            devices: state.devices.enumerated().map { i, d in (d.publicKey, d.name, all[i].perDay) },
+            seen: Dictionary(uniqueKeysWithValues: peers.map { ($0.publicKey, $0.lastSeen ?? 0) }))
+        // Keep it live: a new second of traffic every second.
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.demoTick() }
+        }
+    }
+
+    private var demoWeights: [(key: String, weight: Double)] {
+        state.devices.enumerated().compactMap { i, d in
+            Self.demoDevices[i].online ? (d.publicKey, Self.demoDevices[i].weight) : nil
+        }
+    }
+
+    private func demoTick() {
+        let now = Int64(Date().timeIntervalSince1970)
+        let s = DemoMode.sample(t: now, peers: demoWeights, downPeak: 7_500_000, upPeak: 900_000)
+        samples = Array((samples + [s]).suffix(300))
+        var peers = status.peers ?? []
+        for i in peers.indices where Self.demoDevices[i].online {
+            let r = s.rates(for: peers[i].publicKey)
+            peers[i].lastSeen = now
+            peers[i].txBytes += r.down
+            peers[i].rxBytes += r.up
+        }
+        status.peers = peers
+    }
+}
+#endif

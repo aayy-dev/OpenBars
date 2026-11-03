@@ -44,6 +44,44 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
 
     /// Living in the menu bar: closing the window doesn't quit.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    #if DEBUG
+    /// Screenshot mode (see DemoMode): `-snapshot <file.png>` saves the main
+    /// window's contents at full resolution after a few seconds, then quits.
+    /// The app draws its own window, so no screen-recording permission is needed.
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-snapshot"), i + 1 < args.count else { return }
+        let path = args[i + 1]
+        // Open the main window through its Window menu item if it isn't up.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            guard !NSApp.windows.contains(where: { $0.isVisible && $0.frame.width > 200 }) else { return }
+            let items = NSApp.mainMenu?.items.flatMap { $0.submenu?.items ?? [] } ?? []
+            if let item = items.first(where: { $0.title == "Open Bars" }), let action = item.action {
+                NSApp.sendAction(action, to: item.target, from: item)
+            } else {
+                FileHandle.standardError.write(Data("snapshot: menu items \(items.map(\.title))\n".utf8))
+            }
+            NSApp.activate()
+        }
+        // Key window, so controls draw in their active colors.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            NSApp.windows.filter { $0.isVisible && $0.frame.width > 200 }.first?.makeKeyAndOrderFront(nil)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            guard let window = NSApp.windows.filter({ $0.isVisible && $0.frame.width > 200 }).max(by: { $0.frame.width < $1.frame.width }),
+                  let view = window.contentView?.superview ?? window.contentView,
+                  let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+                let list = NSApp.windows.map { "\($0.title.isEmpty ? "(untitled)" : $0.title) visible=\($0.isVisible) \(Int($0.frame.width))x\(Int($0.frame.height))" }
+                FileHandle.standardError.write(Data("snapshot: no window among \(list)\n".utf8))
+                exit(1)
+            }
+            view.cacheDisplay(in: view.bounds, to: rep) // drawn as the key window (see below)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+            exit(0)
+        }
+    }
+    #endif
 }
 
 /// Settings: where Open Bars shows up, and opening at login.

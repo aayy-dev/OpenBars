@@ -96,6 +96,12 @@ final class ConnectController: ObservableObject {
         if let data = defaults.data(forKey: "pairing") {
             pairing = try? JSONDecoder().decode(Pairing.self, from: data)
         }
+        #if DEBUG
+        if DemoMode.on {
+            showDemo()
+            return
+        }
+        #endif
         defaults.removeObject(forKey: "tunnelLogSeq") // the old text log's position
         log.add(.info, .app, "Open Bars Connect started: \(AppInfo.summary)")
         hookUpLog()
@@ -831,3 +837,41 @@ struct DiagnosticCheck: Identifiable, Equatable {
     var detail: String
     var fix: Fix? = nil
 }
+
+#if DEBUG
+// MARK: - Screenshot mode
+
+extension ConnectController {
+    /// Screenshot mode (see DemoMode): paired, on the iPhone's hotspot and
+    /// connected, with live speed. Nothing is saved.
+    fileprivate func showDemo() {
+        let now = Int64(Date().timeIntervalSince1970)
+        #if os(macOS)
+        let name = "MacBook Air"
+        #else
+        let name = UIDevice.current.localizedModel
+        #endif
+        hotspotName = DemoMode.iPhoneName
+        pairing = Pairing(serverPublicKey: DemoMode.key(0), endpoint: "172.20.10.1:51820",
+                          address: "10.66.66.2", address6: "", dns: "10.66.66.1", mtu: 1280,
+                          hotspotName: DemoMode.iPhoneName, deviceName: name)
+        installed = true
+        autoConnect = true
+        status = .connected
+        onHotspot = true
+        tunnel = TunnelStatus(running: true, endpoint: "172.20.10.1:51820", lastHandshake: now - 25,
+                              rxBytes: 1_284_000_000, txBytes: 87_500_000, uptime: 4140)
+        samples = DemoMode.samples(peers: [], downPeak: 5_800_000, upPeak: 700_000)
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.demoTick() }
+        }
+    }
+
+    private func demoTick() {
+        let s = DemoMode.sample(t: Int64(Date().timeIntervalSince1970), peers: [], downPeak: 5_800_000, upPeak: 700_000)
+        samples = Array((samples + [s]).suffix(300))
+        tunnel?.rxBytes += s.down
+        tunnel?.txBytes += s.up
+    }
+}
+#endif

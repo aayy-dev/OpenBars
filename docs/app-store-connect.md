@@ -94,6 +94,20 @@ Attach a screen recording of the steps above (both devices, start to browsing). 
 
 **Mac version:** the same notes. The Mac app only connects (a Mac can't share Personal Hotspot), so the reviewer needs an iPhone running Open Bars to share.
 
-## Screenshots needed
+## Screenshots
 
-App Store Connect asks for screenshots for each device family the app supports: iPhone (6.9" or 6.5"), iPad (13") and Mac. The README's screenshots in `docs/images/` are iPhone captures; iPad and Mac ones still need to be taken.
+App Store Connect asks for screenshots for each device family the app supports: iPhone (6.9", 1320×2868), iPad (13", 2064×2752) and Mac (2880×1800). [`ios-app/tools/screenshots/make.sh`](../ios-app/tools/screenshots/make.sh) makes all of them:
+
+- It runs Debug builds in demo mode (`-demo`, see `Client/DemoMode.swift`): sample devices, live speed and a month of usage, and nothing is saved. Demo mode isn't in Release builds.
+- It captures each screen in the simulators, and the Mac app captures its own window.
+- It adds a caption above each one, in a device frame on a green background.
+
+| # | Screen | Caption |
+| --- | --- | --- |
+| 1 | Share, sharing with three devices | Share your iPhone's data |
+| 2 | Usage, last 7 days (iPhone) | See what each device uses |
+| 3 | Connect, connected | Connects by itself |
+| 4 | Add Device | Set up any device |
+| 5 | First launch | Simple from the first tap |
+| 6 | Get Started steps (iPhone) | No accounts. No data collected. |
+| Mac | Connect window, light and dark | Your Mac, online anywhere · Live speed, at a glance |

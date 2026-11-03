@@ -180,7 +180,7 @@ The GitHub Actions workflow (`.github/workflows/ios-app.yml`) builds an unsigned
 | `ios-app/OpenBars/Resources` | App icon (`AppIcon.icon` for iOS/macOS 26+, PNGs for older) and `Licenses.json` |
 | `ios-app/core/engine` | The sharing server (wireguard-go, TCP/UDP forwarding, DNS, pairing, usage, config page) |
 | `ios-app/core/wgcore`, `wgclient` | gomobile APIs for the iPhone app and the Connect extension |
-| `ios-app/tools` | Icon, shortcut and license-list generators |
+| `ios-app/tools` | Icon, shortcut and license-list generators, and the App Store screenshots (`screenshots/make.sh`) |
 | `windows` | Open Bars Connect for Windows (Go: service, tray app, installer; see its README) |
 | `docs` | README images and [App Store Connect text](docs/app-store-connect.md) |
 

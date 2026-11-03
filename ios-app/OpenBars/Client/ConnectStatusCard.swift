@@ -15,7 +15,7 @@ struct ConnectStatusCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(connect.statusTitle)
                         .font(compact ? .headline : .title3.weight(.semibold))
-                        .lineLimit(1)
+                        .lineLimit(compact ? 1 : 2) // “Connected to “Name's iPhone”” needs two lines on a phone
                     Text(connect.statusSubtitle)
                         .font(compact ? .caption : .subheadline)
                         .foregroundStyle(.secondary)
