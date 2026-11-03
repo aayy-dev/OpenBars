@@ -79,16 +79,24 @@ struct ShareView: View {
         }
     }
 
-    private var devicesSection: some View {
-        Section {
-            if store.state.devices.isEmpty {
-                EmptyDevicesView { sheet = .addDevice }
-            } else {
-                ForEach(store.state.devices) { d in
-                    NavigationLink { DeviceDetailView(deviceID: d.id) } label: { DeviceRow(device: d) }
-                }
-                .onDelete { store.removeDevices(at: $0) }
+    @ViewBuilder private var devicesSection: some View {
+        if store.state.devices.isEmpty {
+            Section {
+                GetStartedSteps { sheet = .addDevice }
+            } header: {
+                Text("Get Started")
             }
+        } else {
+            devicesList
+        }
+    }
+
+    private var devicesList: some View {
+        Section {
+            ForEach(store.state.devices) { d in
+                NavigationLink { DeviceDetailView(deviceID: d.id) } label: { DeviceRow(device: d) }
+            }
+            .onDelete { store.removeDevices(at: $0) }
         } header: {
             HStack {
                 Text("Devices")
@@ -275,29 +283,5 @@ struct WireGuardAppTag: View {
             .background(Capsule().fill(Color.secondary.opacity(0.15)))
             .foregroundStyle(.secondary)
             .accessibilityLabel("Uses the WireGuard app")
-    }
-}
-
-private struct EmptyDevicesView: View {
-    var add: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("No devices yet").font(.headline)
-            step(1, "Turn on Personal Hotspot here and tap Start.")
-            step(2, "On a Mac, iPad, iPhone or Windows PC: open Open Bars, choose Pair with iPhone, then tap Allow here.")
-            step(3, "Anything else (Linux, other phones and tablets): add it for the WireGuard app.")
-            Button("Add a device", action: add)
-                .buttonStyle(.bordered)
-        }
-        .padding(.vertical, 6)
-    }
-
-    private func step(_ n: Int, _ text: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text("\(n)").font(.caption.weight(.bold)).foregroundStyle(.white)
-                .frame(width: 20, height: 20).background(Circle().fill(Color.green))
-            Text(text).font(.subheadline)
-        }
     }
 }

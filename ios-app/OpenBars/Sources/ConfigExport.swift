@@ -1,10 +1,12 @@
 import CoreImage
 import SwiftUI
 
-/// A WireGuard config as a QR code, drawn with sharp modules on white so
-/// any camera can read it in light or dark mode.
+/// A WireGuard config (or a link) as a QR code, drawn with sharp modules on
+/// white so any camera can read it in light or dark mode.
 struct ConfigQRCode: View {
     let config: String
+    var label = "QR code of the device's configuration"
+    var maxSide: CGFloat = 280
 
     var body: some View {
         if let image = Self.render(config) {
@@ -12,11 +14,11 @@ struct ConfigQRCode: View {
                 .interpolation(.none) // keep modules crisp when scaled
                 .resizable()
                 .aspectRatio(1, contentMode: .fit)
-                .frame(maxWidth: 280)
+                .frame(maxWidth: maxSide)
                 .padding(14)
                 .background(.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .frame(maxWidth: .infinity)
-                .accessibilityLabel("QR code of the device's configuration")
+                .accessibilityLabel(label)
         }
     }
 

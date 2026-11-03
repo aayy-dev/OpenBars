@@ -24,7 +24,11 @@ Requires iOS 17 or later (Control Center controls and widgets need iOS 18), macO
 
 ## Install
 
-Builds are on the [Releases](https://github.com/aayy-dev/OpenBars/releases) page:
+**iPhone, iPad and Mac: [join the public beta on TestFlight](https://testflight.apple.com/join/Xy7czFXJ).** Open the link on the device, install TestFlight if asked, then install Open Bars from it. This is the easiest way, and it has every feature. The Mac app is in Apple's beta review; once it's approved, the same link offers it on a Mac.
+
+**Windows:** download it from [Releases](https://github.com/aayy-dev/OpenBars/releases) (see [Windows](#windows) below).
+
+Unsigned builds of everything are on the [Releases](https://github.com/aayy-dev/OpenBars/releases) page too:
 
 | File | For |
 | --- | --- |
@@ -34,7 +38,7 @@ Builds are on the [Releases](https://github.com/aayy-dev/OpenBars/releases) page
 
 None of them are signed, so you sign the iPhone and Mac apps yourself.
 
-**Building with Xcode is the only way to get every feature.** Background sharing, the Connect VPN, and the Control Center controls and widgets need the Network Extension and App Groups capabilities. Those require a paid Apple Developer account and an App ID registered for this app. See [Building](#building).
+**Signing them yourself doesn't get every feature.** Background sharing, the Connect VPN, and the Control Center controls and widgets need the Network Extension and App Groups capabilities. Those require a paid Apple Developer account and an App ID registered for this app (see [Building](#building)). TestFlight has them all.
 
 ### iPhone and iPad: sideloading (e.g. Feather)
 
@@ -48,7 +52,7 @@ What works when sideloaded depends on your certificate's provisioning profile. P
 
 ### Mac
 
-Build it with Xcode (see [Building](#building)). macOS allows a VPN app extension only in App Store builds and in builds signed with a development profile, so the release's unsigned Mac app can't add the VPN.
+Install it from [TestFlight](https://testflight.apple.com/join/Xy7czFXJ) once the Mac beta is approved, or build it with Xcode (see [Building](#building)). macOS allows a VPN app extension only in App Store and TestFlight builds and in builds signed with a development profile, so the release's unsigned Mac app can't add the VPN.
 
 `OpenBars-<version>-macOS.zip` is included for completeness. To open it, run `xattr -dr com.apple.quarantine "Open Bars.app"` and `codesign --force --deep --sign - "Open Bars.app"`. It can pair, but not connect. Without a developer account, use the WireGuard app for Mac with a config from the iPhone (see **Other devices** under [Using it](#using-it)).
 
@@ -57,6 +61,8 @@ Build it with Xcode (see [Building](#building)). macOS allows a VPN app extensio
 Download `OpenBars-windows-x64-<version>.exe` (or `OpenBars-windows-arm64-<version>.exe` on an ARM PC) and run it. It offers to install itself (administrator prompt): it goes to `C:\Program Files\Open Bars` with a small background service that runs the tunnel, a Start menu entry and a tray icon. The builds aren't code-signed yet, so SmartScreen may ask first (**More info › Run anyway**). Remove it from **Settings › Apps**. See [windows/README.md](windows/README.md) for details.
 
 ## Using it
+
+The first time you open Open Bars on an iPhone or iPad, it asks whether that device shares or uses another iPhone's data. Until the first device is added, the Share tab shows the steps, ticking each one off as it's done, and **Add** walks through setting up each kind of device.
 
 **On the iPhone that shares**
 
@@ -85,7 +91,7 @@ On a Mac, Open Bars lives in the menu bar once it's set up. **Settings › Menu 
 
 **Other devices (WireGuard app)**
 
-In Share, tap **Add**, create a device under **With the WireGuard app**, then scan its QR code with the WireGuard app. On a laptop, open `http://172.20.10.1:8080` while on the hotspot and download its `.conf`.
+In Share, tap **Add › Something else**, create the device, then scan its QR code with the WireGuard app. On a laptop, open `http://172.20.10.1:8080` while on the hotspot and download its `.conf`.
 
 ## Privacy
 
