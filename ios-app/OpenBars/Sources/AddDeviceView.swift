@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Add a device: pair one running Open Bars (recommended for Apple devices),
+/// Add a device: pair one running Open Bars (Apple devices and Windows PCs),
 /// or create a config for the WireGuard app (anything else).
 struct AddDeviceView: View {
     @EnvironmentObject var store: Store
@@ -13,9 +13,9 @@ struct AddDeviceView: View {
         NavigationStack {
             List {
                 Section {
-                    Label("Mac, iPad or iPhone", systemImage: "laptopcomputer.and.iphone")
+                    Label("Mac, iPad, iPhone or Windows PC", systemImage: "laptopcomputer.and.iphone")
                         .font(.headline)
-                    Text("Install Open Bars on it and join this hotspot. Then open **Connect › Pair with iPhone**: the request shows up here for you to allow.")
+                    Text("Install Open Bars on it and join this hotspot. Then choose **Pair with iPhone** (under **Connect** on a Mac, iPad or iPhone): the request shows up here for you to allow.")
                         .font(.subheadline)
                     if !store.running {
                         Label("Tap Start first, so the device can reach this iPhone.", systemImage: "exclamationmark.circle")
@@ -50,7 +50,7 @@ struct AddDeviceView: View {
                 } header: {
                     Text("With the WireGuard app")
                 } footer: {
-                    Text("For Windows, Android, Linux and others. You'll get a QR code and a config file to import into the WireGuard app.")
+                    Text("For Linux, other phones and tablets, and anything else that runs the WireGuard app. You'll get a QR code and a config file to import into it.")
                 }
             }
             .navigationTitle("Add Device")

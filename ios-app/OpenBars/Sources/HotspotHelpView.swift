@@ -88,7 +88,7 @@ struct HotspotHelpView: View {
                     "Pick this iPhone in their Wi‑Fi menu: it turns on the hotspot by itself (Instant Hotspot), even with Allow Others to Join off.",
                     "Keep “Keep sharing in the background” on here, and their Open Bars VPN connects by itself.",
                 ],
-                footer: "Works for the same Apple Account or your Family Sharing group. Windows and Android devices need Personal Hotspot on with Allow Others to Join.")
+                footer: "Works for the same Apple Account or your Family Sharing group. Other devices need Personal Hotspot on with Allow Others to Join.")
         }
         .navigationTitle("Turning On the Hotspot")
         .navigationBarTitleDisplayMode(.inline)

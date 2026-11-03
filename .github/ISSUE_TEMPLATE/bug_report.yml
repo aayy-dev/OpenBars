@@ -1,0 +1,72 @@
+name: Bug report
+description: Something doesn't work in Open Bars.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! The **log** and **Diagnose** results make most problems quick to find, so please include them.
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where does it happen?
+      multiple: true
+      options:
+        - iPhone that shares (Share)
+        - iPhone or iPad that connects (Connect)
+        - Mac (Connect)
+        - Windows PC
+        - Device using the WireGuard app
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Open Bars version
+      description: "iPhone, iPad and Mac: Settings › About › Version. Windows: bottom left of the window."
+      placeholder: 1.0.0 (4)
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options:
+        - TestFlight or App Store
+        - Built with Xcode
+        - Sideloaded (Feather or similar)
+        - Windows release download
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Devices and OS versions
+      placeholder: iPhone 15 on iOS 26.1 sharing to a Windows 11 PC
+    validations:
+      required: true
+  - type: input
+    id: carrier
+    attributes:
+      label: Carrier (optional)
+      description: Some problems depend on the carrier's network, for example IPv6-only networks.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnose
+    attributes:
+      label: Diagnose results
+      description: "On the connecting device: Diagnose. Paste the result, or say which step failed."
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        Open the log (the document icon on iPhone, iPad and Mac, or Log on Windows), turn on **Detailed logging** (in the ⋯ menu on iPhone, iPad and Mac), reproduce the problem, then export or copy it and paste it here or attach the file.
+        Logs never contain private keys, but they do contain device names and local network addresses, and Detailed logging adds the addresses of connections. Look it over before posting and remove anything you'd rather not share.
+      render: text

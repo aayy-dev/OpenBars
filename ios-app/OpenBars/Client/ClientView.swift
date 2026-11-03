@@ -102,7 +102,10 @@ struct ClientView: View {
         } header: {
             Text("Set Up")
         } footer: {
-            Text("On the iPhone, open Open Bars and tap Start. There are no certificates or profiles to install.")
+            VStack(alignment: .leading, spacing: 8) {
+                Text("On the iPhone, open Open Bars and tap Start. There are no certificates or profiles to install.")
+                PrivacyNote(text: "Open Bars collects no data. Pairing gives the iPhone this device's name and public key, and nothing is sent to the developer.")
+            }
         }
         if connect.localNetworkBlocked { localNetworkSection }
         if let msg = connect.message {

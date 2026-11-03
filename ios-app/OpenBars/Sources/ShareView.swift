@@ -17,7 +17,13 @@ struct ShareView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section { StatusCard() }
+                Section {
+                    StatusCard()
+                } footer: {
+                    if !store.running {
+                        PrivacyNote(text: "Open Bars collects no data. Your devices' traffic goes from this iPhone straight to the internet. Their names, usage and the log stay on this iPhone.")
+                    }
+                }
                 attentionSection
                 devicesSection
                 usageSection
@@ -279,8 +285,8 @@ private struct EmptyDevicesView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("No devices yet").font(.headline)
             step(1, "Turn on Personal Hotspot here and tap Start.")
-            step(2, "On a Mac, iPad or iPhone: open Open Bars › Connect › Pair, then tap Allow here.")
-            step(3, "Anything else (Windows, Android, Linux): add it for the WireGuard app.")
+            step(2, "On a Mac, iPad, iPhone or Windows PC: open Open Bars, choose Pair with iPhone, then tap Allow here.")
+            step(3, "Anything else (Linux, other phones and tablets): add it for the WireGuard app.")
             Button("Add a device", action: add)
                 .buttonStyle(.bordered)
         }

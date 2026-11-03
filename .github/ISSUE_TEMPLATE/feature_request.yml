@@ -1,0 +1,15 @@
+name: Feature request
+description: Suggest something Open Bars should do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What would you like?
+      description: Describe what you're trying to do and what's missing.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: How would you use it?

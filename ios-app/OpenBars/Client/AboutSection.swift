@@ -3,12 +3,30 @@ import SwiftUI
 /// Required next to any use of the name (wireguard.com/trademark-policy).
 let wireGuardTrademark = "“WireGuard” and the “WireGuard” logo are registered trademarks of Jason A. Donenfeld."
 
+/// PRIVACY.md in the repository.
+let privacyPolicyURL = URL(string: "https://github.com/aayy-dev/OpenBars/blob/main/PRIVACY.md")!
+
+/// What Open Bars collects (nothing), shown before sharing or pairing starts:
+/// App Review asks VPN apps to say so on screen before the service is used
+/// (guideline 5.4).
+struct PrivacyNote: View {
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(text)
+            Link("Privacy Policy", destination: privacyPolicyURL)
+        }
+    }
+}
+
 /// Settings › About, in Share's and Connect's settings (iOS and Mac).
 struct AboutSection: View {
     var body: some View {
         Section {
             LabeledContent("Version", value: Self.version)
             NavigationLink("Open-Source Licenses") { LicensesView() }
+            Link("Privacy Policy", destination: privacyPolicyURL)
             Link("Source Code", destination: URL(string: "https://github.com/aayy-dev/OpenBars")!)
         } header: {
             Text("About")

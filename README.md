@@ -5,7 +5,7 @@
 Open Bars shares an iPhone's cellular connection with your other devices over an encrypted tunnel, using [wireguard-go](https://git.zx2c4.com/wireguard-go). Devices on the iPhone's Personal Hotspot send their traffic into the tunnel, and Open Bars on the iPhone re-opens every connection from the phone itself, so it goes out as the iPhone's own traffic.
 
 > [!WARNING]
-> **Early pre-release.** Hotspot sharing has only been tested on one iPhone so far. Expect rough edges, and please [open an issue](https://github.com/aayy-dev/OpenBars/issues) if something doesn't work on yours.
+> **Early pre-release.** Hotspot sharing has only been tested on one iPhone so far. Expect rough edges, and please [report anything that doesn't work](#reporting-problems) on yours.
 
 <p align="center">
   <img src="docs/images/share-sharing.png" width="250" alt="Share tab while sharing: live speed chart and paired devices">
@@ -24,7 +24,15 @@ Requires iOS 17 or later (Control Center controls and widgets need iOS 18), macO
 
 ## Install
 
-Builds are on the [Releases](https://github.com/aayy-dev/OpenBars/releases) page. They're unsigned, so you sign them yourself.
+Builds are on the [Releases](https://github.com/aayy-dev/OpenBars/releases) page:
+
+| File | For |
+| --- | --- |
+| `OpenBars-<version>.ipa` | iPhone and iPad, sideloaded |
+| `OpenBars-<version>-macOS.zip` | Mac (pairs, but can't connect; see below) |
+| `OpenBars-windows-x64-<version>.exe` | Windows PCs (`-arm64-` for ARM PCs) |
+
+None of them are signed, so you sign the iPhone and Mac apps yourself.
 
 **Building with Xcode is the only way to get every feature.** Background sharing, the Connect VPN, and the Control Center controls and widgets need the Network Extension and App Groups capabilities. Those require a paid Apple Developer account and an App ID registered for this app. See [Building](#building).
 
@@ -46,7 +54,7 @@ Build it with Xcode (see [Building](#building)). macOS allows a VPN app extensio
 
 ### Windows
 
-Download `OpenBars-windows-<arch>-<version>.zip` (x64 or ARM64), unzip it and run `OpenBars.exe`. It offers to install itself (administrator prompt): it goes to `C:\Program Files\Open Bars` with a small background service that runs the tunnel, a Start menu entry and a tray icon. The builds aren't code-signed yet, so SmartScreen may ask first (**More info › Run anyway**). Remove it from **Settings › Apps**. See [windows/README.md](windows/README.md) for details.
+Download `OpenBars-windows-x64-<version>.exe` (or `OpenBars-windows-arm64-<version>.exe` on an ARM PC) and run it. It offers to install itself (administrator prompt): it goes to `C:\Program Files\Open Bars` with a small background service that runs the tunnel, a Start menu entry and a tray icon. The builds aren't code-signed yet, so SmartScreen may ask first (**More info › Run anyway**). Remove it from **Settings › Apps**. See [windows/README.md](windows/README.md) for details.
 
 ## Using it
 
@@ -78,6 +86,31 @@ On a Mac, Open Bars lives in the menu bar once it's set up. **Settings › Menu 
 **Other devices (WireGuard app)**
 
 In Share, tap **Add**, create a device under **With the WireGuard app**, then scan its QR code with the WireGuard app. On a laptop, open `http://172.20.10.1:8080` while on the hotspot and download its `.conf`.
+
+## Privacy
+
+Open Bars collects no data: there are no accounts, analytics or Open Bars servers, and nothing is sent to the developer. Device names, keys, usage and logs stay on your devices. Your devices' DNS lookups go to the servers in Settings › Tunnel (Cloudflare and Google by default). The details are in the [privacy policy](PRIVACY.md).
+
+## FAQ
+
+**Does Open Bars save data or get around my carrier's hotspot limits?**
+It doesn't reduce the data you use. Your devices' traffic still goes over your iPhone's cellular connection and counts against your plan. Open Bars sends it out as the iPhone's own traffic, so whether your carrier counts it as hotspot use is up to the carrier. Plans differ on what's allowed for data used by other devices, so check your plan's terms.
+
+**Can the developer see my traffic?**
+No. Traffic goes from your devices to your iPhone and from there straight to the internet. There's no Open Bars server in between.
+
+**Do I need the WireGuard app?**
+Not on a Mac, iPad, iPhone or Windows PC: they pair with Open Bars directly. Other devices, such as Linux computers or other phones, use the WireGuard app with a config from the iPhone.
+
+**Can the iPhone use another VPN app while it shares?**
+Only while sharing runs in the app. Then the hotspot devices' traffic goes through that VPN too. With **Keep sharing in the background** on, Open Bars is the iPhone's VPN, and iOS runs one VPN at a time.
+
+**Why does Windows warn when I run it?**
+The Windows build isn't code-signed yet, so SmartScreen doesn't recognize it. Choose **More info › Run anyway**. The source and build script are in [`windows/`](windows).
+
+## Reporting problems
+
+[Open an issue](https://github.com/aayy-dev/OpenBars/issues/new/choose) with the bug report form. On the device that connects, run **Diagnose** and include what it says. Then turn on **Detailed logging** in the log, reproduce the problem and attach the exported log. Logs never contain private keys, but they do include device names and addresses, so look them over first.
 
 ## How it works
 
@@ -143,6 +176,7 @@ The GitHub Actions workflow (`.github/workflows/ios-app.yml`) builds an unsigned
 | `ios-app/core/wgcore`, `wgclient` | gomobile APIs for the iPhone app and the Connect extension |
 | `ios-app/tools` | Icon, shortcut and license-list generators |
 | `windows` | Open Bars Connect for Windows (Go: service, tray app, installer; see its README) |
+| `docs` | README images and [App Store Connect text](docs/app-store-connect.md) |
 
 ## Known limits
 

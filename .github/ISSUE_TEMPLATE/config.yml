@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Privacy policy
+    url: https://github.com/aayy-dev/OpenBars/blob/main/PRIVACY.md
+    about: What Open Bars stores and sends (nothing goes to the developer).
