@@ -1,6 +1,7 @@
 import AppIntents
 
 /// Open Bars' actions in Shortcuts, Siri and Spotlight, with no setup.
+@available(iOS 16.0, *) // Siri and Shortcuts (App Intents) are iOS 16+
 struct OpenBarsShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(

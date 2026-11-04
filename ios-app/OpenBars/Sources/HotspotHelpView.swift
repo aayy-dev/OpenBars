@@ -43,7 +43,7 @@ struct HotspotHelpView: View {
                     "Or Action button: Settings › Action Button › Shortcut › “Share with Open Bars”.",
                 ])
                 if let url = HotspotShortcutFiles.hotspotAndShare {
-                    ShareLink(item: url) { Label("Get “Share with Open Bars”", systemImage: "square.and.arrow.down") }
+                    ShareButton(url: url) { Label("Get “Share with Open Bars”", systemImage: "square.and.arrow.down") }
                 }
             } header: {
                 Label("One tap: hotspot and sharing", systemImage: "bolt.circle")

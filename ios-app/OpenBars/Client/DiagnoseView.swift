@@ -7,7 +7,7 @@ struct DiagnoseView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
+        NavStack {
             List {
                 Section {
                     ForEach(connect.diagnostics) { DiagnosticRow(check: $0) }

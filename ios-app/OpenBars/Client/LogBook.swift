@@ -68,14 +68,13 @@ final class LogBook: ObservableObject {
 
     private init(_ kind: Kind, fileName: String, oldFile: String, detailDefaults: UserDefaults, detailKey: String) {
         self.kind = kind
-        let folder = URL.applicationSupportDirectory
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        fileURL = folder.appending(path: fileName)
+        let folder = FileManager.appSupportFolder
+        fileURL = folder.appendingPathComponent(fileName)
         self.detailDefaults = detailDefaults
         self.detailKey = detailKey
         cursorKey = "logCursors.\(kind.rawValue)"
         // The text logs of earlier versions are replaced by this one.
-        try? FileManager.default.removeItem(at: folder.appending(path: oldFile))
+        try? FileManager.default.removeItem(at: folder.appendingPathComponent(oldFile))
 
         if let data = UserDefaults.standard.data(forKey: cursorKey),
            let saved = try? JSONDecoder().decode([String: Cursor].self, from: data) {

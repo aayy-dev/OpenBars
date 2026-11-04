@@ -36,14 +36,14 @@ struct OpenBarsApp: App {
                 }
                 .appAppearance()
             }
-            .onChange(of: scenePhase) { _, phase in
+            .onChangeCompat(of: scenePhase) { phase in
                 if phase == .active { store.appBecameActive() }
                 if phase == .background { store.appWentToBackground() }
             }
             // openbars://hotspot — Shortcuts reporting back after the hotspot shortcut.
             .onOpenURL { store.handleURL($0) }
             // The Allow/Don't Allow prompt for a pairing device lives on Share.
-            .onChange(of: store.nextPairingRequest?.publicKey) { _, key in
+            .onChangeCompat(of: store.nextPairingRequest?.publicKey) { key in
                 if key != nil { tab = "share" }
             }
         }

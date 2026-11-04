@@ -8,7 +8,7 @@ struct AddDeviceView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
+        NavStack {
             List {
                 Section {
                     NavigationLink { PhoneGuide() } label: {
@@ -67,7 +67,7 @@ private struct PhoneGuide: View {
                 ConfigQRCode(config: Links.getOpenBars.absoluteString, label: "QR code of the link to Open Bars", maxSide: 180)
                 Text("On the other iPhone or iPad, open the Camera and point it at this code. Or send it the link:")
                     .font(.subheadline)
-                ShareLink(item: Links.getOpenBars) { Label("Send Link", systemImage: "square.and.arrow.up") }
+                ShareButton(url: Links.getOpenBars) { Label("Send Link", systemImage: "square.and.arrow.up") }
             } header: {
                 StepHeader(1, "Get Open Bars on it")
             } footer: {
@@ -90,7 +90,7 @@ private struct MacGuide: View {
             Section {
                 Text("Send the link to your Mac, for example with AirDrop, Messages or Mail, and open it there.")
                     .font(.subheadline)
-                ShareLink(item: Links.getOpenBars) { Label("Send Link", systemImage: "square.and.arrow.up") }
+                ShareButton(url: Links.getOpenBars) { Label("Send Link", systemImage: "square.and.arrow.up") }
             } header: {
                 StepHeader(1, "Get Open Bars for Mac")
             } footer: {
@@ -116,7 +116,7 @@ private struct WindowsGuide: View {
                 Text(verbatim: Links.releasesText)
                     .font(.subheadline.monospaced())
                     .textSelection(.enabled)
-                ShareLink(item: Links.releases) { Label("Send Link", systemImage: "square.and.arrow.up") }
+                ShareButton(url: Links.releases) { Label("Send Link", systemImage: "square.and.arrow.up") }
             } header: {
                 StepHeader(1, "Get Open Bars for Windows")
             } footer: {
@@ -183,8 +183,8 @@ private struct WireGuardGuide: View {
         }
         .navigationTitle("WireGuard App")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(item: $created) { d in
-            DeviceDetailView(deviceID: d.id, startWithQR: true)
+        .navigationDestinationCompat(isPresented: Binding(get: { created != nil }, set: { if !$0 { created = nil } })) {
+            if let d = created { DeviceDetailView(deviceID: d.id, startWithQR: true) }
         }
     }
 }

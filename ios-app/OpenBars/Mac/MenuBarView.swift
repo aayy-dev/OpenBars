@@ -59,7 +59,7 @@ struct MenuBarView: View {
 @MainActor
 func showWindow(_ id: String, openWindow: OpenWindowAction) {
     openWindow(id: id)
-    NSApp.activate()
+    NSApp.activateCompat()
     DispatchQueue.main.async {
         for w in NSApp.windows where w.identifier?.rawValue.hasPrefix(id) == true {
             w.makeKeyAndOrderFront(nil)

@@ -12,12 +12,12 @@ struct ConnectSettingsView: View {
             if connect.pairing != nil { hotspotSection }
             if let p = connect.pairing {
                 Section("This Device") {
-                    LabeledContent("Paired as", value: p.deviceName)
-                    LabeledContent("Tunnel address", value: p.address)
+                    LabeledRow("Paired as", value: p.deviceName)
+                    LabeledRow("Tunnel address", value: p.address)
                     if !p.address6.isEmpty {
-                        LabeledContent("Tunnel IPv6", value: p.address6)
+                        LabeledRow("Tunnel IPv6", value: p.address6)
                     }
-                    LabeledContent("iPhone", value: p.endpoint)
+                    LabeledRow("iPhone", value: p.endpoint)
                 }
             }
 
@@ -50,7 +50,7 @@ struct ConnectSettingsView: View {
 
             AboutSection()
         }
-        .formStyle(.grouped)
+        .groupedFormStyle()
         .navigationTitle("Settings")
         .confirmationDialog("Forget this iPhone?", isPresented: $confirmForget, titleVisibility: .visible) {
             Button("Forget", role: .destructive) { Task { await connect.forget() } }

@@ -24,7 +24,7 @@ struct PrivacyNote: View {
 struct AboutSection: View {
     var body: some View {
         Section {
-            LabeledContent("Version", value: Self.version)
+            LabeledRow("Version", value: Self.version)
             NavigationLink("Open-Source Licenses") { LicensesView() }
             Link("Privacy Policy", destination: privacyPolicyURL)
             Link("Source Code", destination: URL(string: "https://github.com/aayy-dev/OpenBars")!)
@@ -68,7 +68,7 @@ struct LicensesView: View {
             Section {
                 ForEach(OpenSourceComponent.bundled) { c in
                     NavigationLink { LicenseTextView(component: c) } label: {
-                        LabeledContent(c.name, value: c.license)
+                        LabeledRow(c.name, value: c.license)
                     }
                 }
             } footer: {
@@ -80,7 +80,7 @@ struct LicensesView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .formStyle(.grouped)
+        .groupedFormStyle()
         .navigationTitle("Open-Source Licenses")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)

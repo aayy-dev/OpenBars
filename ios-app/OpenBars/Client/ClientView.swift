@@ -9,11 +9,11 @@ struct ClientView: View {
     @State private var showDiagnose = false
 
     var body: some View {
-        NavigationStack {
+        NavStack {
             Form {
                 if connect.isSetUp { readyContent } else { setupContent }
             }
-            .formStyle(.grouped)
+            .groupedFormStyle()
             .navigationTitle("Connect")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -41,11 +41,11 @@ struct ClientView: View {
                 }
                 #endif
             }
-            .navigationDestination(isPresented: $connect.showSettings) { ConnectSettingsView() }
+            .navigationDestinationCompat(isPresented: $connect.showSettings) { ConnectSettingsView() }
             .sheet(isPresented: $showDiagnose) { DiagnoseView() }
             #if os(iOS)
             .sheet(isPresented: $showingLog) {
-                NavigationStack { LogBookView(book: .connect) }
+                NavStack { LogBookView(book: .connect) }
             }
             #endif
         }

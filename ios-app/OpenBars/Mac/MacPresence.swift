@@ -45,11 +45,27 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
     /// Living in the menu bar: closing the window doesn't quit.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // macOS 13 and 14 can't start a SwiftUI window closed, so close it right
+        // away when Open Bars lives in the menu bar (macOS 15 uses
+        // defaultLaunchBehavior, see OpenBarsMacApp15).
+        if #unavailable(macOS 15.0) {
+            if !MacPresence.showWindowAtLaunch {
+                DispatchQueue.main.async {
+                    for w in NSApp.windows where w.identifier?.rawValue.hasPrefix("main") == true { w.close() }
+                }
+            }
+        }
+        #if DEBUG
+        snapshotIfRequested()
+        #endif
+    }
+
     #if DEBUG
     /// Screenshot mode (see DemoMode): `-snapshot <file.png>` saves the main
     /// window's contents at full resolution after a few seconds, then quits.
     /// The app draws its own window, so no screen-recording permission is needed.
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    private func snapshotIfRequested() {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "-snapshot"), i + 1 < args.count else { return }
         let path = args[i + 1]
@@ -62,7 +78,7 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 FileHandle.standardError.write(Data("snapshot: menu items \(items.map(\.title))\n".utf8))
             }
-            NSApp.activate()
+            NSApp.activateCompat()
         }
         // Key window, so controls draw in their active colors.
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
@@ -100,8 +116,8 @@ struct MacPresenceSection: View {
         } footer: {
             Text("In the menu bar, Open Bars shows the connection and its speed, and you can connect or disconnect. Setup and settings stay in this window.")
         }
-        .onChange(of: presence) { _, _ in MacPresence.applyDockPolicy() }
-        .onChange(of: openAtLogin) { _, on in
+        .onChangeCompat(of: presence) { _ in MacPresence.applyDockPolicy() }
+        .onChangeCompat(of: openAtLogin) { on in
             do {
                 if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
             } catch {

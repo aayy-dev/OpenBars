@@ -15,7 +15,7 @@ struct ShareView: View {
     @State private var usageRange: UsageRange = .today
 
     var body: some View {
-        NavigationStack {
+        NavStack {
             ScrollViewReader { scroller in
             List {
                 Section {
@@ -46,7 +46,7 @@ struct ShareView: View {
             .sheet(item: $sheet) { which in
                 switch which {
                 case .settings: SettingsView(settings: store.state.settings)
-                case .log: NavigationStack { LogBookView(book: .share) }
+                case .log: NavStack { LogBookView(book: .share) }
                 case .addDevice: AddDeviceView()
                 }
             }

@@ -188,9 +188,7 @@ final class Store: ObservableObject {
 
     /// Devices and settings live in Application Support/openbars.json.
     private static let fileURL: URL = {
-        let folder = URL.applicationSupportDirectory
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        return folder.appending(path: "openbars.json")
+        FileManager.appSupportFolder.appendingPathComponent("openbars.json")
     }()
 
     init() {
@@ -594,6 +592,7 @@ final class Store: ObservableObject {
         guard tunnelLoaded, let before = lastTunnelStatus, before != now, before != .invalid else { return }
         log.add(.info, .ext, "Background sharing: \(ConnectController.describe(now))")
         guard now == .disconnected, let connection = tunnel.manager?.connection else { return }
+        guard #available(iOS 16.0, *) else { return } // fetchLastDisconnectError is iOS 16
         connection.fetchLastDisconnectError { error in
             guard let error else { return }
             Task { @MainActor in

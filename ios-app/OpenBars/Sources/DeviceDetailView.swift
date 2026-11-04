@@ -19,7 +19,7 @@ struct DeviceDetailView: View {
         if let d = store.state.devices.first(where: { $0.id == deviceID }) {
             content(d)
         } else {
-            ContentUnavailableView("Device removed", systemImage: "trash")
+            EmptyState(title: "Device removed", systemImage: "trash")
         }
     }
 
@@ -64,9 +64,9 @@ struct DeviceDetailView: View {
 
             Section("Usage") {
                 if let u = store.usage {
-                    LabeledContent("Today", value: bytes(u.total(in: .today, device: d.publicKey)))
-                    LabeledContent("Last 7 days", value: bytes(u.total(in: .week, device: d.publicKey)))
-                    LabeledContent("Last 30 days", value: bytes(u.total(in: .month, device: d.publicKey)))
+                    LabeledRow("Today", value: bytes(u.total(in: .today, device: d.publicKey)))
+                    LabeledRow("Last 7 days", value: bytes(u.total(in: .week, device: d.publicKey)))
+                    LabeledRow("Last 30 days", value: bytes(u.total(in: .month, device: d.publicKey)))
                     let bars = u.bars(in: .week, names: store.deviceNames, only: d.publicKey)
                     if !bars.isEmpty {
                         UsageBarChart(bars: bars, range: .week, devices: [d.name], height: 110)
@@ -74,12 +74,12 @@ struct DeviceDetailView: View {
                     }
                 }
                 if store.running {
-                    LabeledContent("Since Start", value: bytes((ps?.rxBytes ?? 0) + (ps?.txBytes ?? 0)))
+                    LabeledRow("Since Start", value: bytes((ps?.rxBytes ?? 0) + (ps?.txBytes ?? 0)))
                 }
             }
 
             Section("Details") {
-                LabeledContent("Connects with", value: d.usesWireGuardApp ? "WireGuard app" : "Open Bars")
+                LabeledRow("Connects with", value: d.usesWireGuardApp ? "WireGuard app" : "Open Bars")
                 if d.usesWireGuardApp {
                     Picker("Type", selection: Binding(get: { d.deviceKind }, set: { store.setKind($0, for: d) })) {
                         ForEach(DeviceKind.wireGuardChoices) { k in
@@ -87,12 +87,12 @@ struct DeviceDetailView: View {
                         }
                     }
                 }
-                LabeledContent("Tunnel address", value: d.address)
+                LabeledRow("Tunnel address", value: d.address)
                 if let v6 = tunnelIPv6(for: d.address) {
-                    LabeledContent("Tunnel IPv6", value: v6)
+                    LabeledRow("Tunnel IPv6", value: v6)
                 }
                 if let ep = ps?.endpoint, !ep.isEmpty {
-                    LabeledContent("Connected from", value: ep)
+                    LabeledRow("Connected from", value: ep)
                 }
             }
 
@@ -143,7 +143,7 @@ struct DeviceDetailView: View {
             }
             .disabled(conf.isEmpty)
             if !conf.isEmpty, let url = ConfigFile.write(conf, deviceName: d.name) {
-                ShareLink(item: url) { Label("Share .conf file", systemImage: "square.and.arrow.up") }
+                ShareButton(url: url) { Label("Share .conf file", systemImage: "square.and.arrow.up") }
             }
             Button {
                 UIPasteboard.general.string = conf

@@ -20,11 +20,11 @@ One app runs on iPhone, iPad and Mac, and there's a Windows app for PCs:
 
 Android and Linux devices use the standard WireGuard app with a config from the iPhone. An Open Bars app for Android is [planned](#plans).
 
-Requires iOS 17 or later (Control Center controls and widgets need iOS 18), macOS 15 or later, and Windows 10 or 11 for the Windows app.
+Requires iOS 15 or later, macOS 13 or later, and Windows 10 or 11 for the Windows app. Some features need a newer system and are left out on older ones: the speed and usage graphs are simpler on iOS 15, Siri and Shortcuts actions need iOS 16, and Control Center controls and widgets need iOS 18.
 
 ## Install
 
-**iPhone, iPad and Mac: [join the public beta on TestFlight](https://testflight.apple.com/join/Xy7czFXJ).** Open the link on the device, install TestFlight if asked, then install Open Bars from it. This is the easiest way, and it has every feature. The Mac app needs macOS 15 or later.
+**iPhone, iPad and Mac: [join the public beta on TestFlight](https://testflight.apple.com/join/Xy7czFXJ).** Open the link on the device, install TestFlight if asked, then install Open Bars from it. This is the easiest way, and it has every feature. The Mac app needs macOS 13 or later.
 
 **Windows:** download it from [Releases](https://github.com/aayy-dev/OpenBars/releases) (see [Windows](#windows) below).
 
@@ -139,9 +139,9 @@ go install golang.org/x/mobile/cmd/gomobile@latest golang.org/x/mobile/cmd/gobin
 gomobile init
 
 cd ios-app/core
-gomobile bind -target=ios,iossimulator -iosversion=17.0 -ldflags="-s -w" \
+gomobile bind -target=ios,iossimulator -iosversion=15.0 -ldflags="-s -w" \
   -o ../OpenBars/Frameworks/WGCore.xcframework ./wgcore
-gomobile bind -target=ios,iossimulator,macos -iosversion=17.0 -macosversion=15.0 -ldflags="-s -w" \
+gomobile bind -target=ios,iossimulator,macos -iosversion=15.0 -macosversion=13.0 -ldflags="-s -w" \
   -o ../OpenBars/Frameworks/WGClient.xcframework ./wgclient
 ```
 

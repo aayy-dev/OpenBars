@@ -12,6 +12,7 @@ struct LogBookView: View {
     @State private var search = ""
     @State private var confirmClear = false
     @State private var atBottom = true
+    @State private var exportURL: URL? // iOS 15's share sheet
     #if os(iOS)
     @Environment(\.dismiss) private var dismiss
     #endif
@@ -64,18 +65,18 @@ struct LogBookView: View {
                 .overlay {
                     if rows.isEmpty {
                         if search.isEmpty {
-                            ContentUnavailableView(filter == .all ? "Nothing logged yet" : "No warnings or errors",
-                                                   systemImage: "doc.text.magnifyingglass")
+                            EmptyState(title: filter == .all ? "Nothing logged yet" : "No warnings or errors",
+                                       systemImage: "doc.text.magnifyingglass")
                         } else {
-                            ContentUnavailableView.search(text: search)
+                            SearchEmptyState(text: search)
                         }
                     }
                 }
                 .onAppear { proxy.scrollTo(Self.bottom, anchor: .bottom) }
-                .onChange(of: book.entries.last?.id) {
+                .onChangeCompat(of: book.entries.last?.id) { _ in
                     if atBottom { proxy.scrollTo(Self.bottom, anchor: .bottom) }
                 }
-                .onChange(of: filter) { proxy.scrollTo(Self.bottom, anchor: .bottom) }
+                .onChangeCompat(of: filter) { _ in proxy.scrollTo(Self.bottom, anchor: .bottom) }
             }
         }
         .searchable(text: $search, prompt: "Search")
@@ -127,11 +128,26 @@ struct LogBookView: View {
         #endif
     }
 
-    private var shareButton: some View {
-        ShareLink(item: LogExport(book: book), preview: SharePreview(book.exportFileName)) {
-            Label("Share", systemImage: "square.and.arrow.up")
+    @ViewBuilder private var shareButton: some View {
+        if #available(iOS 16.0, macOS 13.0, *) {
+            ShareLink(item: LogExport(book: book), preview: SharePreview(book.exportFileName)) {
+                Label("Share", systemImage: "square.and.arrow.up")
+            }
+            .disabled(book.entries.isEmpty)
+        } else {
+            #if os(iOS)
+            // iOS 15 has no ShareLink: write the file, then show the share sheet.
+            Button {
+                exportURL = try? LogExport.writeFile(name: book.exportFileName, text: book.exportText())
+            } label: {
+                Label("Share", systemImage: "square.and.arrow.up")
+            }
+            .disabled(book.entries.isEmpty)
+            .sheet(isPresented: Binding(get: { exportURL != nil }, set: { if !$0 { exportURL = nil } })) {
+                if let url = exportURL { ActivitySheet(items: [url]) }
+            }
+            #endif
         }
-        .disabled(book.entries.isEmpty)
     }
 
     private var optionsMenu: some View {
@@ -181,17 +197,25 @@ private struct LogRow: View {
 }
 
 /// The log as a .txt file for the share sheet ("Open Bars Share log 2026-11-02.txt").
-struct LogExport: Transferable {
+struct LogExport {
     let book: LogBook
 
+    /// Writes the exported log to a temporary file to share.
+    static func writeFile(name: String, text: String) throws -> URL {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("log-export", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent(name)
+        try text.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+}
+
+@available(iOS 16.0, macOS 13.0, *) // Transferable and ShareLink
+extension LogExport: Transferable {
     static var transferRepresentation: some TransferRepresentation {
         FileRepresentation(exportedContentType: .plainText) { export in
             let (name, text) = await MainActor.run { (export.book.exportFileName, export.book.exportText()) }
-            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("log-export", isDirectory: true)
-            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let url = dir.appendingPathComponent(name)
-            try text.write(to: url, atomically: true, encoding: .utf8)
-            return SentTransferredFile(url)
+            return SentTransferredFile(try LogExport.writeFile(name: name, text: text))
         }
     }
 }

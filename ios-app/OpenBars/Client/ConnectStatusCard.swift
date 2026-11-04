@@ -59,7 +59,7 @@ struct ConnectButton: View {
             }
         }
         .buttonStyle(.borderedProminent)
-        .buttonBorderShape(.capsule)
+        .capsuleButtonShape()
         .controlSize(compact ? .small : .regular)
         .tint(on ? .red : .green)
         .disabled(connect.busy || (!on && !connect.onHotspot))

@@ -3,6 +3,7 @@ import AppIntents
 // Actions for Shortcuts, Siri, Spotlight, the Action button, Control Center
 // and widgets. Sharing started from these runs in the background.
 
+@available(iOS 16.0, *)
 struct StartSharingIntent: AppIntent {
     static let title: LocalizedStringResource = "Start Sharing"
     static let description = IntentDescription(
@@ -20,6 +21,7 @@ struct StartSharingIntent: AppIntent {
     }
 }
 
+@available(iOS 16.0, *)
 struct StopSharingIntent: AppIntent {
     static let title: LocalizedStringResource = "Stop Sharing"
     static let description = IntentDescription("Stop sharing your cellular connection through Open Bars.")
@@ -58,6 +60,7 @@ struct SetSharingIntent: SetValueIntent {
 /// Opens Open Bars, which turns on Personal Hotspot with the user's
 /// hotspot shortcut and starts sharing. For a 1×1 control: controls can't
 /// run Shortcuts actions themselves, but the app can.
+@available(iOS 16.0, *)
 struct ShareWithHotspotIntent: AppIntent {
     static let title: LocalizedStringResource = "Share with Hotspot"
     static let description = IntentDescription(

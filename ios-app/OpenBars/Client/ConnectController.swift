@@ -550,10 +550,10 @@ final class ConnectController: ObservableObject {
             let q = DispatchQueue(label: "dev.aayy.openbars.localnet")
             let conn = NWConnection(host: NWEndpoint.Host(phoneHost),
                                     port: NWEndpoint.Port(rawValue: UInt16(webPort)) ?? 8080, using: .tcp)
-            let finished = OSAllocatedUnfairLock(initialState: false)
+            let finished = OnceFlag()
             let finish: @Sendable () -> Void = {
                 // The state handler and the timeout can both fire; answer once.
-                guard finished.withLock({ done in defer { done = true }; return !done }) else { return }
+                guard finished.claim() else { return }
                 let denied = conn.currentPath?.unsatisfiedReason == .localNetworkDenied
                 conn.cancel()
                 cont.resume(returning: denied)

@@ -141,6 +141,19 @@ struct ThroughputChart: View {
         let start = max(end.addingTimeInterval(-300), min(first, end.addingTimeInterval(-60)))
         let pts = points
         let peak = max(pts.map { max($0.down, $0.up) }.max() ?? 0, 64_000)
+        Group {
+            if #available(iOS 16.0, macOS 13.0, *) {
+                swiftChart(pts, start: start, end: end, peak: peak)
+            } else {
+                SpeedGraphFallback(points: pts.map { ($0.date, $0.down, $0.up) }, start: start, end: end, top: peak * 1.15)
+            }
+        }
+        .frame(height: height)
+        .accessibilityLabel("Speed over the last 5 minutes")
+    }
+
+    @available(iOS 16.0, macOS 13.0, *)
+    private func swiftChart(_ pts: [Point], start: Date, end: Date, peak: Double) -> some View {
         Chart {
             ForEach(pts) { p in
                 AreaMark(x: .value("Time", p.date), y: .value("Download", p.down))
@@ -174,8 +187,6 @@ struct ThroughputChart: View {
                 }
             }
         }
-        .frame(height: height)
-        .accessibilityLabel("Speed over the last 5 minutes")
     }
 }
 
@@ -216,6 +227,18 @@ struct UsageBarChart: View {
                 return s...cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now))!
             }
         }()
+        Group {
+            if #available(iOS 16.0, macOS 13.0, *) {
+                swiftChart(unit: unit, domain: domain)
+            } else {
+                UsageBarsFallback(bars: bars, devices: devices, domain: domain, unit: unit)
+            }
+        }
+        .frame(height: height)
+    }
+
+    @available(iOS 16.0, macOS 13.0, *)
+    private func swiftChart(unit: Calendar.Component, domain: ClosedRange<Date>) -> some View {
         Chart(bars) { b in
             BarMark(x: .value("Time", b.date, unit: unit), y: .value("Data", b.bytes))
                 .foregroundStyle(by: .value("Device", b.device))
@@ -249,7 +272,6 @@ struct UsageBarChart: View {
             }
         }
         .chartLegend(devices.count > 1 ? .visible : .hidden)
-        .frame(height: height)
     }
 }
 
@@ -339,12 +361,149 @@ struct RateLabel: View {
         VStack(alignment: .leading, spacing: 2) {
             Label {
                 Text(formatRate(value)).font((compact ? Font.headline : .title2).weight(.semibold)).monospacedDigit()
-                    .contentTransition(.numericText())
+                    .numericTextTransition()
             } icon: {
                 Image(systemName: symbol).foregroundStyle(tint).font(compact ? .subheadline : .headline)
             }
             Text(caption).font(compact ? .caption2 : .caption).foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - Graphs for iOS 15 (Swift Charts is iOS 16 / macOS 13)
+
+/// The speed graph drawn by hand: download as a filled area, upload as a line,
+/// over the same time window and scale as the Swift Charts version.
+private struct SpeedGraphFallback: View {
+    var points: [(date: Date, down: Double, up: Double)]
+    var start: Date
+    var end: Date
+    var top: Double
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = max(geo.size.width - 60, 1) // room for the scale on the right
+            let h = geo.size.height
+            ZStack(alignment: .topLeading) {
+                ForEach([0.0, 0.5, 1.0], id: \.self) { f in
+                    Path { p in
+                        let y = h - CGFloat(f) * h
+                        p.move(to: CGPoint(x: 0, y: y)); p.addLine(to: CGPoint(x: w, y: y))
+                    }
+                    .stroke(Color.secondary.opacity(0.2), lineWidth: 0.5)
+                }
+                Path { p in
+                    let pts = plotted(\.down, w: w, h: h)
+                    guard let first = pts.first, let last = pts.last else { return }
+                    p.move(to: CGPoint(x: first.x, y: h))
+                    pts.forEach { p.addLine(to: $0) }
+                    p.addLine(to: CGPoint(x: last.x, y: h))
+                    p.closeSubpath()
+                }
+                .fill(LinearGradient(colors: [TrafficColor.down.opacity(0.45), TrafficColor.down.opacity(0.05)],
+                                     startPoint: .top, endPoint: .bottom))
+                line(plotted(\.down, w: w, h: h)).stroke(TrafficColor.down, lineWidth: 1.5)
+                line(plotted(\.up, w: w, h: h)).stroke(TrafficColor.up, lineWidth: 1.5)
+                VStack(alignment: .trailing) {
+                    Text(formatRate(Int64(top)))
+                    Spacer()
+                    Text(formatRate(Int64(top / 2)))
+                    Spacer()
+                    Text("0 KB/s")
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(width: 56, height: h, alignment: .trailing)
+                .offset(x: w + 4)
+            }
+        }
+    }
+
+    private typealias Point = (date: Date, down: Double, up: Double)
+
+    private func plotted(_ value: KeyPath<Point, Double>, w: CGFloat, h: CGFloat) -> [CGPoint] {
+        let span = max(end.timeIntervalSince(start), 1)
+        return points.filter { $0.date >= start && $0.date <= end }.map { pt in
+            CGPoint(x: CGFloat(pt.date.timeIntervalSince(start) / span) * w,
+                    y: h - CGFloat(min(pt[keyPath: value] / max(top, 1), 1)) * h)
+        }
+    }
+
+    private func line(_ pts: [CGPoint]) -> Path {
+        Path { p in
+            guard let first = pts.first else { return }
+            p.move(to: first)
+            pts.dropFirst().forEach { p.addLine(to: $0) }
+        }
+    }
+}
+
+/// The usage bars drawn by hand: one column per hour (today) or day, stacked
+/// by device in the same colors, with a legend and the top of the scale.
+private struct UsageBarsFallback: View {
+    var bars: [UsageBar]
+    var devices: [String]
+    var domain: ClosedRange<Date>
+    var unit: Calendar.Component
+
+    var body: some View {
+        let columns = self.columns
+        let top = max(columns.map { $0.reduce(0) { $0 + $1.bytes } }.max() ?? 0, 1)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 4) {
+                GeometryReader { geo in
+                    HStack(alignment: .bottom, spacing: columns.count > 12 ? 1 : 3) {
+                        ForEach(columns.indices, id: \.self) { i in
+                            VStack(spacing: 0) {
+                                Spacer(minLength: 0)
+                                ForEach(columns[i].indices.reversed(), id: \.self) { j in
+                                    Rectangle()
+                                        .fill(color(columns[i][j].device))
+                                        .frame(height: geo.size.height * CGFloat(columns[i][j].bytes) / CGFloat(top))
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+                }
+                Text(ByteCountFormatter.string(fromByteCount: top, countStyle: .decimal))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            if devices.count > 1 {
+                HStack(spacing: 10) {
+                    ForEach(devices, id: \.self) { d in
+                        HStack(spacing: 4) {
+                            Circle().fill(color(d)).frame(width: 7, height: 7)
+                            Text(d).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Each hour or day in the range, with its device segments in legend order.
+    private var columns: [[(device: String, bytes: Int64)]] {
+        let cal = Calendar.current
+        var count = 0
+        var d = domain.lowerBound
+        while d < domain.upperBound, let next = cal.date(byAdding: unit, value: 1, to: d) {
+            count += 1
+            d = next
+        }
+        var out = Array(repeating: [String: Int64](), count: max(count, 1))
+        for b in bars {
+            guard let i = cal.dateComponents([unit], from: domain.lowerBound, to: b.date).value(for: unit),
+                  out.indices.contains(i) else { continue }
+            out[i][b.device, default: 0] += b.bytes
+        }
+        return out.map { col in devices.compactMap { name in col[name].map { (name, $0) } } }
+    }
+
+    private func color(_ device: String) -> Color {
+        let i = devices.firstIndex(of: device) ?? 0
+        return TrafficColor.palette[i % TrafficColor.palette.count]
     }
 }

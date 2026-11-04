@@ -8,7 +8,7 @@ struct SettingsView: View {
     @State var settings: AppSettings
 
     var body: some View {
-        NavigationStack {
+        NavStack {
             Form {
                 Section {
                     AppearancePicker()
@@ -63,7 +63,7 @@ struct SettingsView: View {
                         TextField("Shortcut name", text: $settings.hotspotShortcutName)
                             .autocorrectionDisabled()
                         if let url = HotspotShortcutFiles.hotspotOnly {
-                            ShareLink(item: url) {
+                            ShareButton(url: url) {
                                 Label("Get the “Open Bars Hotspot” shortcut", systemImage: "square.and.arrow.down")
                             }
                         }

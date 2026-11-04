@@ -48,7 +48,7 @@ private struct AppearanceModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .onAppear { appearance.apply() }
-            .onChange(of: appearance) { _, new in new.apply() }
+            .onChangeCompat(of: appearance) { new in new.apply() }
     }
 }
 
