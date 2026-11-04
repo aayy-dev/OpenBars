@@ -15,7 +15,7 @@ Drafts for the App Store listing, TestFlight and App Review, so each field says 
 | Copyright | 2026 aayy-dev |
 | Age rating | Answer "None" or "No" to everything (4+). Open Bars isn't a web browser, so "Unrestricted Web Access" is No. |
 | App Privacy | **Data Not Collected** |
-| Encryption | Already answered by `ITSAppUsesNonExemptEncryption = false` in the Info.plist. |
+| Encryption | Answered by `ITSAppUsesNonExemptEncryption = false` in the Info.plist. That's accurate only while France is excluded (see Availability). |
 | Sign-in required | Off (there are no accounts) |
 
 ## App Store listing
@@ -86,7 +86,10 @@ tethering,tunnel,vpn,cellular,personal,usb,menu bar,laptop,mobile data,internet,
 
 ### Availability
 
-Every territory except China mainland. Guideline 5.4: a VPN app offered "in a territory that requires a VPN license" must give its license information in the App Review notes, and China mainland requires one.
+Every territory except China mainland and France.
+
+- China mainland: guideline 5.4 says a VPN app offered "in a territory that requires a VPN license" must give its license information in the App Review notes, and China mainland requires one.
+- France: the tunnel (wireguard-go) implements standard encryption itself rather than only using Apple's. For such apps, Apple's export compliance table asks for a French encryption declaration, "only required if you're distributing your app on the App Store in France". Without France, no documentation is needed and `ITSAppUsesNonExemptEncryption = NO` stays accurate. To add France later: file the declaration with ANSSI, upload it under App Information › App Encryption Documentation, then put the code Apple issues in `ITSEncryptionExportComplianceCode` (and set `ITSAppUsesNonExemptEncryption` to YES) in a new build.
 
 ## TestFlight
 
