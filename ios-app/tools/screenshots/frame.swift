@@ -1,16 +1,21 @@
 // Composes an App Store screenshot: a caption on a soft green background,
 // and the raw screenshot below it in a device-like frame.
 //
-// usage: frame <in.png> <out.png> <width> <height> <style: phone|tablet|mac> <title> <subtitle>
+// usage: frame <in.png> <out.png> <width> <height> <style: phone|tablet|mac> <title> <subtitle> [phone.png]
+//
+// With phone.png (tablet only), the iPhone it connects through stands in front
+// of the iPad's lower right. Connect fills only the top of an iPad screen, so
+// this fills the frame and shows where the iPad's connection comes from.
 import AppKit
 
 let a = CommandLine.arguments
-guard a.count == 8, let shot = NSImage(contentsOfFile: a[1]),
+guard a.count == 8 || a.count == 9, let shot = NSImage(contentsOfFile: a[1]),
       let W = Double(a[3]), let H = Double(a[4]) else {
     FileHandle.standardError.write("usage: frame in.png out.png W H phone|tablet|mac title subtitle\n".data(using: .utf8)!)
     exit(2)
 }
 let out = a[2], style = a[5], title = a[6], subtitle = a[7]
+let companion = a.count == 9 ? NSImage(contentsOfFile: a[8]) : nil
 
 guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(W), pixelsHigh: Int(H),
                                  bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
@@ -72,7 +77,7 @@ default:
 let screenW = frameW - 2 * bezel
 let screenH = screenW * imgSize.height / imgSize.width
 let frameH = screenH + 2 * bezel
-let frameX = (W - frameW) / 2
+let frameX = companion == nil ? (W - frameW) / 2 : W * 0.05 // leaves room for the iPhone on the right
 let frameTop = captionBottom
 let frameY = H - frameTop - frameH // may run off the bottom, on purpose for phones
 
@@ -94,6 +99,24 @@ NSBezierPath(roundedRect: screenRect, xRadius: corner, yRadius: corner).addClip(
 shot.draw(in: screenRect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true,
           hints: [.interpolation: NSNumber(value: NSImageInterpolation.high.rawValue)])
 NSGraphicsContext.restoreGraphicsState()
+
+// The iPhone in front of the iPad's lower right, running off the bottom.
+if let phone = companion {
+    let pW = W * 0.36, pH = pW / 0.4675, pBezel = pW * 0.035, pCorner = pW * 0.14
+    let pFrame = NSRect(x: W - pW - W * 0.05, y: H - H * 0.56 - pH, width: pW, height: pH)
+    ctx.saveGState()
+    shadow.shadowBlurRadius = unit * 0.05
+    shadow.set()
+    rgb(0x111214).setFill()
+    NSBezierPath(roundedRect: pFrame, xRadius: pCorner + pBezel, yRadius: pCorner + pBezel).fill()
+    ctx.restoreGState()
+    let pScreen = pFrame.insetBy(dx: pBezel, dy: pBezel)
+    NSGraphicsContext.saveGraphicsState()
+    NSBezierPath(roundedRect: pScreen, xRadius: pCorner, yRadius: pCorner).addClip()
+    phone.draw(in: pScreen, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true,
+               hints: [.interpolation: NSNumber(value: NSImageInterpolation.high.rawValue)])
+    NSGraphicsContext.restoreGraphicsState()
+}
 
 NSGraphicsContext.restoreGraphicsState()
 // App Store Connect rejects images with an alpha channel: flatten to RGB.
