@@ -4,6 +4,13 @@
 
 Open Bars shares an iPhone's cellular connection with your other devices over an encrypted tunnel, using [wireguard-go](https://git.zx2c4.com/wireguard-go). Devices on the iPhone's Personal Hotspot send their traffic into the tunnel, and Open Bars on the iPhone opens each connection from the phone itself.
 
+<p align="center">
+  <a href="https://testflight.apple.com/join/Xy7czFXJ"><img src="https://img.shields.io/badge/TestFlight-Join_the_public_beta-0D96F6?style=for-the-badge" height="36" alt="Join the public beta on TestFlight"></a>
+</p>
+<p align="center">
+  <b>iPhone, iPad and Mac:</b> <a href="https://testflight.apple.com/join/Xy7czFXJ">join the public beta on TestFlight</a> · <b>Windows:</b> <a href="https://github.com/aayy-dev/OpenBars/releases">download from Releases</a>
+</p>
+
 > [!WARNING]
 > **Early pre-release.** Hotspot sharing has only been tested on one iPhone so far. Expect rough edges, and please [report anything that doesn't work](#reporting-problems) on yours.
 
