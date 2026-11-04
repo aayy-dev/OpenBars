@@ -47,8 +47,10 @@ Drafts for the App Store listing, TestFlight and App Review, so each field says 
 **Keywords (100):**
 
 ```
-hotspot,tethering,tunnel,vpn,cellular,share,personal hotspot,laptop,pc,mac,ipad,data usage
+tethering,tunnel,vpn,cellular,personal,laptop,mac,ipad,pc,mobile data,usage,internet,usb,connection
 ```
+
+Apple's search guide says "Don't repeat any words included in your app name, subtitle, or category", so "hotspot", "sharing" and "encrypted" (already in the name and subtitle) aren't here.
 
 Don't add "WireGuard" or other apps' names: guideline 2.3.7 bars packing metadata with trademarked terms. The listing also leaves out prices (2.3.7) and other mobile platforms (2.3.10), which is why the app and the listing say "other phones" rather than naming them.
 
@@ -79,7 +81,7 @@ The Mac app only connects, so its listing describes that and leaves out the iPho
 **Keywords (100):**
 
 ```
-tethering,tunnel,vpn,cellular,personal hotspot,usb,wifi,menu bar,laptop,mobile data,internet,share
+tethering,tunnel,vpn,cellular,personal,usb,menu bar,laptop,mobile data,internet,connection,network
 ```
 
 ### Availability
