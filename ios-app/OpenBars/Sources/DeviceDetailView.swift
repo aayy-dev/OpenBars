@@ -106,7 +106,7 @@ struct DeviceDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Rename") { newName = d.name; renaming = true }
+                Button("Rename", systemImage: "pencil") { newName = d.name; renaming = true }
             }
         }
         .alert("Rename Device", isPresented: $renaming) {

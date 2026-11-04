@@ -21,15 +21,14 @@ struct ClientView: View {
             .toolbar {
                 #if os(iOS)
                 // Log on the left, like Share, so the title stays centered.
+                // Each button has a title and an icon, so iPhone Duo can show
+                // it in a vertical bar (icon) or the overflow menu (both).
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { showLog() } label: { Image(systemName: "doc.text.magnifyingglass") }
-                        .accessibilityLabel("Log")
+                    Button("Log", systemImage: "doc.text.magnifyingglass") { showLog() }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button { Task { await connect.reload() } } label: { Image(systemName: "arrow.clockwise") }
-                        .accessibilityLabel("Refresh")
-                    Button { connect.showSettings = true } label: { Image(systemName: "gearshape") }
-                        .accessibilityLabel("Settings")
+                    Button("Refresh", systemImage: "arrow.clockwise") { Task { await connect.reload() } }
+                    Button("Settings", systemImage: "gearshape") { connect.showSettings = true }
                 }
                 #else
                 ToolbarItemGroup {

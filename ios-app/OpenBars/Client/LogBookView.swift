@@ -110,8 +110,8 @@ struct LogBookView: View {
             shareButton
             optionsMenu
         }
-        ToolbarItem(placement: .topBarTrailing) {
-            Button("Done") { dismiss() }
+        ToolbarItem(placement: .pinnedTrailing) {
+            Button("Done", systemImage: "checkmark") { dismiss() }
         }
         #else
         ToolbarItemGroup {

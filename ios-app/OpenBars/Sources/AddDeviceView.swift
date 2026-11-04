@@ -39,7 +39,7 @@ struct AddDeviceView: View {
             .navigationTitle("Add Device")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .pinnedTrailing) { Button("Done", systemImage: "checkmark") { dismiss() } }
             }
         }
     }

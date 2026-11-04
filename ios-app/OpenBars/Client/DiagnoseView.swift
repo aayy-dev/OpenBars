@@ -26,18 +26,33 @@ struct DiagnoseView: View {
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
+                ToolbarItem(placement: .cancellationAction) { closeButton }
                 ToolbarItem(placement: .primaryAction) {
-                    Button("Check Again") { Task { await connect.runDiagnostics() } }
-                        .disabled(connect.diagnosing)
+                    checkAgainButton.disabled(connect.diagnosing)
                 }
             }
             .task { await connect.runDiagnostics() }
         }
         #if os(macOS)
         .frame(minWidth: 460, minHeight: 440)
+        #endif
+    }
+
+    // On iOS each button has a title and an icon, so iPhone Duo can show it in
+    // a vertical bar (icon) or the overflow menu. The Mac keeps text buttons.
+    @ViewBuilder private var closeButton: some View {
+        #if os(iOS)
+        Button("Close", systemImage: "xmark") { dismiss() }
+        #else
+        Button("Done") { dismiss() }
+        #endif
+    }
+
+    @ViewBuilder private var checkAgainButton: some View {
+        #if os(iOS)
+        Button("Check Again", systemImage: "arrow.clockwise") { Task { await connect.runDiagnostics() } }
+        #else
+        Button("Check Again") { Task { await connect.runDiagnostics() } }
         #endif
     }
 

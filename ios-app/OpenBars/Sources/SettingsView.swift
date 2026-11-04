@@ -86,11 +86,11 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", systemImage: "xmark") { dismiss() }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Save") {
+                ToolbarItem(placement: .pinnedTrailing) {
+                    Button("Save", systemImage: "checkmark") {
                         store.updateSettings(settings)
                         dismiss()
                     }
