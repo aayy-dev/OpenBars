@@ -2,6 +2,7 @@ import Foundation
 import NetworkExtension
 import SwiftUI
 import UIKit
+import UserNotifications
 import WGCore
 
 // MARK: - Saved state (openbars.json)
@@ -242,6 +243,8 @@ final class Store: ObservableObject {
     private var pausedNoticeAt: Date?
     /// iOS paused Open Bars since it left the screen.
     private var pausedByIOS = false
+    /// Notification permission was checked since the app came on screen.
+    private var notificationsChecked = false
     /// The background tunnel's status at the last refresh, to log changes.
     private var lastTunnelStatus: NEVPNStatus?
 
@@ -338,6 +341,7 @@ final class Store: ObservableObject {
     /// Called when the app comes on screen.
     func appBecameActive() {
         endGrace()
+        notificationsChecked = false
         if pausedByIOS {
             pausedByIOS = false
             if running && !runningInBackground {
@@ -419,13 +423,18 @@ final class Store: ObservableObject {
         graceTask = .invalid
     }
 
-    /// Notifications: asked the first time sharing starts, when they start
-    /// to matter (pairing requests, limits, sharing stopping).
-    private func askForNotificationsOnce() {
-        let key = "notificationsAsked"
-        guard !UserDefaults.standard.bool(forKey: key) else { return }
-        UserDefaults.standard.set(true, forKey: key)
-        Notifier.requestAuthorization()
+    /// Asks for notification permission while sharing is on, if iOS hasn't
+    /// asked yet: Open Bars only appears in iOS Settings › Notifications
+    /// after that. Checked each time the app comes on screen, since sharing
+    /// may have started from Control Center, a widget or a shortcut, or kept
+    /// running from before an update.
+    private func askForNotificationsIfNeeded() {
+        guard !notificationsChecked, UIApplication.shared.applicationState == .active else { return }
+        notificationsChecked = true
+        UNUserNotificationCenter.current().getNotificationSettings { s in
+            guard s.authorizationStatus == .notDetermined else { return }
+            Notifier.requestAuthorization()
+        }
     }
 
     /// Shortcuts, widgets and the control start sharing from the config the
@@ -574,7 +583,7 @@ final class Store: ObservableObject {
         lastError = nil
         stoppingUntil = nil
         advertise() // triggers the Local Network permission prompt
-        askForNotificationsOnce()
+        askForNotificationsIfNeeded()
         if runHotspot && state.settings.hotspotShortcut { runHotspotShortcut() }
         if state.settings.backgroundSharing {
             // Background: the engine runs in the Network Extension, which iOS
@@ -671,6 +680,7 @@ final class Store: ObservableObject {
         if tunnel.isActive || tunnel.status == .disconnecting {
             runningInBackground = true
             running = tunnel.isActive
+            if running { askForNotificationsIfNeeded() }
             Task {
                 if let s = await tunnel.send("status") { apply(statusJSON: s) }
                 await pullExtensionLogs()
@@ -681,6 +691,7 @@ final class Store: ObservableObject {
         }
         runningInBackground = false
         running = WgcoreRunning()
+        if running { askForNotificationsIfNeeded() }
         apply(statusJSON: WgcoreStatusJSON())
         Task {
             await pullFinalExtensionLog()

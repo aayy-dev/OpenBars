@@ -348,14 +348,21 @@ struct LimitSettingsSheet: View {
 
 struct NotificationSettingsSection: View {
     @Binding var prefs: NotificationPrefs
-    @State private var allowed: Bool?
+    @State private var permission: UNAuthorizationStatus?
 
     var body: some View {
         Section {
-            if allowed == false {
+            switch permission {
+            case .notDetermined:
+                Button("Turn On Notifications") {
+                    Notifier.requestAuthorization { _ in check() }
+                }
+            case .denied:
                 Button("Turn On Notifications in Settings") {
                     if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
                 }
+            default:
+                EmptyView()
             }
             Toggle("Device asks to connect", isOn: $prefs.pairing)
             Toggle("Data limits", isOn: $prefs.limits)
@@ -366,16 +373,23 @@ struct NotificationSettingsSection: View {
         } header: {
             Text("Notifications")
         } footer: {
-            Text(allowed == false
-                 ? "Notifications are off for Open Bars in iOS Settings."
-                 : "Most of these come while sharing in the background. You can answer from the notification: Allow, Give More, Approve.")
-        }
-        .onAppear {
-            UNUserNotificationCenter.current().getNotificationSettings { s in
-                let ok = s.authorizationStatus == .authorized || s.authorizationStatus == .provisional
-                    || s.authorizationStatus == .notDetermined
-                DispatchQueue.main.async { allowed = ok }
+            switch permission {
+            case .denied:
+                Text("Notifications are off for Open Bars in iOS Settings.")
+            case .notDetermined:
+                Text("Open Bars hasn't asked for notifications yet. Turn them on to hear about devices asking to connect, data limits, and sharing stopping while Open Bars isn't on screen.")
+            default:
+                Text("Most of these come while sharing in the background. You can answer from the notification: Allow, Give More, Approve.")
             }
+        }
+        .onAppear(perform: check)
+        // Back from iOS Settings.
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in check() }
+    }
+
+    private func check() {
+        UNUserNotificationCenter.current().getNotificationSettings { s in
+            DispatchQueue.main.async { permission = s.authorizationStatus }
         }
     }
 }

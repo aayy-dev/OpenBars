@@ -75,12 +75,13 @@ struct ShareView: View {
 
     #if DEBUG
     /// Screenshot mode (see DemoMode): `-showAddDevice` opens Add Device,
-    /// `-showUsage` scrolls to the last 7 days of usage.
+    /// `-showSettings` opens Settings, `-showUsage` scrolls to the last 7 days of usage.
     private func showDemoScreen(_ scroller: ScrollViewProxy) {
         guard DemoMode.on else { return }
         let args = ProcessInfo.processInfo.arguments
         if args.contains("-showAddDevice") { sheet = .addDevice }
         if args.contains("-showLimits") { sheet = .limits }
+        if args.contains("-showSettings") { sheet = .settings }
         if let i = args.firstIndex(of: "-showDevice"), i + 1 < args.count, let n = Int(args[i + 1]),
            store.state.devices.indices.contains(n) {
             demoDeviceID = store.state.devices[n].id
