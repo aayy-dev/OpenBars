@@ -24,7 +24,7 @@ Requires iOS 17 or later (Control Center controls and widgets need iOS 18), macO
 
 ## Install
 
-**iPhone, iPad and Mac: [join the public beta on TestFlight](https://testflight.apple.com/join/Xy7czFXJ).** Open the link on the device, install TestFlight if asked, then install Open Bars from it. This is the easiest way, and it has every feature. The Mac app is in Apple's beta review; once it's approved, the same link offers it on a Mac.
+**iPhone, iPad and Mac: [join the public beta on TestFlight](https://testflight.apple.com/join/Xy7czFXJ).** Open the link on the device, install TestFlight if asked, then install Open Bars from it. This is the easiest way, and it has every feature. The Mac app needs macOS 15 or later.
 
 **Windows:** download it from [Releases](https://github.com/aayy-dev/OpenBars/releases) (see [Windows](#windows) below).
 
@@ -35,6 +35,7 @@ Unsigned builds of everything are on the [Releases](https://github.com/aayy-dev/
 | `OpenBars-<version>.ipa` | iPhone and iPad, sideloaded |
 | `OpenBars-<version>-macOS.zip` | Mac (pairs, but can't connect; see below) |
 | `OpenBars-windows-x64-<version>.exe` | Windows PCs (`-arm64-` for ARM PCs) |
+| `OpenBars-windows-x64-<version>.zip` | The same Windows app as separate files (extract them all first) |
 
 None of them are signed, so you sign the iPhone and Mac apps yourself.
 
@@ -52,7 +53,7 @@ What works when sideloaded depends on your certificate's provisioning profile. P
 
 ### Mac
 
-Install it from [TestFlight](https://testflight.apple.com/join/Xy7czFXJ) once the Mac beta is approved, or build it with Xcode (see [Building](#building)). macOS allows a VPN app extension only in App Store and TestFlight builds and in builds signed with a development profile, so the release's unsigned Mac app can't add the VPN.
+Install it from [TestFlight](https://testflight.apple.com/join/Xy7czFXJ), or build it with Xcode (see [Building](#building)). macOS allows a VPN app extension only in App Store and TestFlight builds and in builds signed with a development profile, so the release's unsigned Mac app can't add the VPN.
 
 `OpenBars-<version>-macOS.zip` is included for completeness. To open it, run `xattr -dr com.apple.quarantine "Open Bars.app"` and `codesign --force --deep --sign - "Open Bars.app"`. It can pair, but not connect. Without a developer account, use the WireGuard app for Mac with a config from the iPhone (see **Other devices** under [Using it](#using-it)).
 
