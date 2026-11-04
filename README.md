@@ -2,7 +2,7 @@
 
 <img width="108" height="108" alt="Open Bars icon" src="docs/images/icon.png" />
 
-Open Bars shares an iPhone's cellular connection with your other devices over an encrypted tunnel, using [wireguard-go](https://git.zx2c4.com/wireguard-go). Devices on the iPhone's Personal Hotspot send their traffic into the tunnel, and Open Bars on the iPhone re-opens every connection from the phone itself, so it goes out as the iPhone's own traffic.
+Open Bars shares an iPhone's cellular connection with your other devices over an encrypted tunnel, using [wireguard-go](https://git.zx2c4.com/wireguard-go). Devices on the iPhone's Personal Hotspot send their traffic into the tunnel, and Open Bars on the iPhone opens each connection from the phone itself.
 
 > [!WARNING]
 > **Early pre-release.** Hotspot sharing has only been tested on one iPhone so far. Expect rough edges, and please [report anything that doesn't work](#reporting-problems) on yours.
