@@ -2,7 +2,8 @@ import SwiftUI
 
 @main
 struct OpenBarsApp: App {
-    @StateObject private var store = Store()
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @StateObject private var store = Store.shared
     @StateObject private var connect = ConnectController()
     @AppStorage("tab") private var tab = "share"
     /// The first-launch question (Share or Connect) has been answered.

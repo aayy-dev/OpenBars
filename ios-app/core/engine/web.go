@@ -66,15 +66,16 @@ func (s *Server) webIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg := s.Config()
 	var rows strings.Builder
+	now := time.Now()
 	for i, p := range cfg.Peers {
-		if p.PrivateKey == "" {
+		if !s.confAvailable(p, now) {
 			continue
 		}
 		fmt.Fprintf(&rows, "<li><a href=\"/conf/%d/%s.conf\">%s</a><span>%s</span></li>",
 			i, safeName(p.Name), html.EscapeString(p.Name), html.EscapeString(p.Address))
 	}
 	if rows.Len() == 0 {
-		rows.WriteString("<li class=muted>No WireGuard devices yet. Add one in Open Bars on the iPhone (Share → Add device).</li>")
+		rows.WriteString("<li class=muted>Nothing to download right now. Each config can be downloaded once, within a few minutes of adding the device in Open Bars on the iPhone. To download one again, open the device there and tap Allow Download.</li>")
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, indexPage, rows.String(), html.EscapeString(s.endpointHost(r)), cfg.ListenPort)
@@ -138,7 +139,7 @@ func (s *Server) webConf(w http.ResponseWriter, r *http.Request) {
 	idxStr, _, _ := strings.Cut(rest, "/")
 	i, err := strconv.Atoi(idxStr)
 	cfg := s.Config()
-	if err != nil || i < 0 || i >= len(cfg.Peers) || cfg.Peers[i].PrivateKey == "" {
+	if err != nil || i < 0 || i >= len(cfg.Peers) || !s.confAvailable(cfg.Peers[i], time.Now()) {
 		http.NotFound(w, r)
 		return
 	}
@@ -157,7 +158,25 @@ func (s *Server) webConf(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name+".conf"))
 	w.Write([]byte(conf))
-	s.log.Infof("web", "Config for %q downloaded from %s", p.Name, remoteHost(r))
+	s.confMu.Lock()
+	if s.confTaken == nil {
+		s.confTaken = map[string]int64{}
+	}
+	s.confTaken[p.PublicKey] = p.ConfUntil
+	s.confMu.Unlock()
+	s.log.Infof("web", "Config for %q downloaded from %s; the config page won't offer it again", p.Name, remoteHost(r))
+}
+
+// confAvailable: a WireGuard-app device's .conf is on the config page once,
+// until its ConfUntil. Otherwise anyone on the hotspot could take another
+// device's key, and with it that device's (maybe unlimited) access.
+func (s *Server) confAvailable(p PeerConfig, now time.Time) bool {
+	if p.PrivateKey == "" || p.ConfUntil <= now.Unix() {
+		return false
+	}
+	s.confMu.Lock()
+	defer s.confMu.Unlock()
+	return s.confTaken[p.PublicKey] != p.ConfUntil
 }
 
 // safeName keeps ASCII letters, digits, '-' and '_', turns spaces into

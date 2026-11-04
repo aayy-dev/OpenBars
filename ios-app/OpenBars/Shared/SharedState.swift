@@ -59,6 +59,45 @@ enum SharedState {
         return defaults.bool(forKey: "hotspotRequestOn")
     }
 
+    // MARK: Notifications (read by the background-sharing extension)
+
+    /// Which notifications are on, written by the app from its settings.
+    static var notificationPrefs: NotificationPrefs {
+        get {
+            defaults.data(forKey: "notificationPrefs").flatMap { try? JSONDecoder().decode(NotificationPrefs.self, from: $0) }
+                ?? NotificationPrefs()
+        }
+        set { defaults.set(try? JSONEncoder().encode(newValue), forKey: "notificationPrefs") }
+    }
+
+    /// Some device or the all-devices cap has a limit: then a pairing
+    /// notification's Allow opens the app to choose the new device's limit.
+    static var limitsInUse: Bool {
+        get { defaults.bool(forKey: "limitsInUse") }
+        set { defaults.set(newValue, forKey: "limitsInUse") }
+    }
+
+    /// When background sharing last stopped without being asked to (unix
+    /// seconds; 0 = it didn't), so a restart soon after can say it's back.
+    static var unexpectedStop: Double {
+        get { defaults.double(forKey: "unexpectedStop") }
+        set { defaults.set(newValue, forKey: "unexpectedStop") }
+    }
+
+    /// Background sharing's last sign of life (unix seconds), written by
+    /// its Watchdog; 0 once it stops the normal way.
+    static var watchdogAlive: Double {
+        get { defaults.double(forKey: "watchdogAlive") }
+        set { defaults.set(newValue, forKey: "watchdogAlive") }
+    }
+
+    /// When the Watchdog's "Sharing stopped" notice shows if nothing pushes
+    /// it back (unix seconds; 0 = none scheduled).
+    static var watchdogDue: Double {
+        get { defaults.double(forKey: "watchdogDue") }
+        set { defaults.set(newValue, forKey: "watchdogDue") }
+    }
+
     static func reloadWidgets() {
         if #available(iOS 18.0, *) {
             ControlCenter.shared.reloadControls(ofKind: controlKind)

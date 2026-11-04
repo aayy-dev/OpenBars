@@ -26,7 +26,7 @@ struct DeviceDetailView: View {
     private func content(_ d: Device) -> some View {
         let online = store.isOnline(d)
         let ps = store.peerStatus(for: d)
-        return List {
+        return ScrollViewReader { scroller in List {
             Section {
                 HStack(spacing: 14) {
                     Image(systemName: d.deviceKind.symbol)
@@ -78,6 +78,9 @@ struct DeviceDetailView: View {
                 }
             }
 
+            DeviceLimitSection(device: d)
+                .id("limits")
+
             Section("Details") {
                 LabeledRow("Connects with", value: d.usesWireGuardApp ? "WireGuard app" : "Open Bars")
                 if d.usesWireGuardApp {
@@ -101,6 +104,15 @@ struct DeviceDetailView: View {
             Section {
                 Button("Remove Device", role: .destructive) { confirmRemove = true }
             }
+        }
+        #if DEBUG
+        .onAppear {
+            // Screenshot mode: `-showDevice N -showDeviceLimits`.
+            if DemoMode.on, ProcessInfo.processInfo.arguments.contains("-showDeviceLimits") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { scroller.scrollTo("limits", anchor: .top) }
+            }
+        }
+        #endif
         }
         .navigationTitle(d.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -152,11 +164,21 @@ struct DeviceDetailView: View {
                 Label(copied ? "Copied" : "Copy config", systemImage: copied ? "checkmark" : "doc.on.doc")
             }
             .disabled(conf.isEmpty)
+            if store.state.settings.webPageEnabled && !conf.isEmpty {
+                if store.downloadOpen(d) {
+                    Label("On the config page now (one download)", systemImage: "arrow.down.circle")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Button { store.allowDownload(d) } label: {
+                        Label("Allow Download from the Config Page", systemImage: "arrow.down.circle")
+                    }
+                }
+            }
         } header: {
             Text("Set up in the WireGuard app")
         } footer: {
             if store.state.settings.webPageEnabled {
-                Text("In the WireGuard app: + › Create from QR code. On a laptop, open \(configPageURL) while on the hotspot and download “\(d.name).conf”.")
+                Text("In the WireGuard app: + › Create from QR code. On a laptop, open \(configPageURL) while on the hotspot and download “\(d.name).conf”. The page offers it once, for 15 minutes, so nobody else on your hotspot can take this device's key.")
             } else {
                 Text("In the WireGuard app: + › Create from QR code, or import the .conf file.")
             }

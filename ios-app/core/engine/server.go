@@ -65,6 +65,10 @@ type Config struct {
 	// LowMemory is set when running inside the Network Extension (iOS caps
 	// its memory): smaller TCP buffers and a Go memory limit.
 	LowMemory bool `json:"low_memory"`
+
+	// Limits are the app-wide data limit settings (limits.go); each
+	// device's own limits are in its PeerConfig.
+	Limits LimitSettings `json:"limits"`
 }
 
 // PeerConfig is one device.
@@ -73,6 +77,11 @@ type PeerConfig struct {
 	PublicKey  string `json:"public_key"`            // base64
 	PrivateKey string `json:"private_key,omitempty"` // only for WireGuard-app devices (for their .conf)
 	Address    string `json:"address"`               // tunnel IPv4, e.g. 10.66.66.2
+	// Limit is the device's data limits, nil for none.
+	Limit *DeviceLimit `json:"limit,omitempty"`
+	// ConfUntil: a WireGuard-app device's .conf can be downloaded from the
+	// config page once, until this time (unix seconds). 0 = not at all.
+	ConfUntil int64 `json:"conf_until,omitempty"`
 }
 
 // Server is a running engine.
@@ -109,6 +118,20 @@ type Server struct {
 	wgSeen   map[string]bool // peers whose first handshake line was logged
 	watch    map[string]*peerWatch
 	stopOnce sync.Once
+
+	// Data limits (limits.go, enforce.go, statuspage.go).
+	events    *eventLog
+	asks      askBook
+	enf       enforcer
+	conns     connRegistry
+	statusLn  *chanListener
+	limMu     sync.Mutex
+	limStatus map[string]LimitStatus
+	capStatus []RuleStatus
+
+	// Config page downloads already made: public key -> the ConfUntil they used.
+	confMu    sync.Mutex
+	confTaken map[string]int64
 }
 
 // Start brings the engine up. log receives its log entries.
@@ -143,6 +166,7 @@ func Start(cfg Config, log *Logger) (*Server, error) {
 		dnsSlots: make(chan struct{}, dnsInFlight),
 		wgSeen:   map[string]bool{},
 		watch:    map[string]*peerWatch{},
+		events:   newEventLog(),
 	}
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	s.eg = newEgress(s.ctx, cfg.BindCellular, log)
@@ -162,6 +186,7 @@ func Start(cfg Config, log *Logger) (*Server, error) {
 	s.frags = newReassembler()
 	s.ping = newPinger(s)
 	s.dev.intercept = s.intercept
+	s.dev.filterIn, s.dev.filterOut = s.allowFrom, s.allowTo
 	fwd := tcp.NewForwarder(s.dev.stack, 0, tcpMaxInFlight, s.handleTCP)
 	s.dev.stack.SetTransportProtocolHandler(tcp.ProtocolNumber, fwd.HandlePacket)
 
@@ -203,6 +228,8 @@ func Start(cfg Config, log *Logger) (*Server, error) {
 	}
 	s.startWebs()
 	s.stats = newStats(cfg.UsageFile, cfg.TimeZone, log)
+	s.evaluateLimits(time.Now())
+	s.startStatusPage()
 	go s.housekeeping()
 	go s.statsLoop()
 	s.logSession(ni)
@@ -394,6 +421,8 @@ func (s *Server) SetPeers(peers []PeerConfig) error {
 	s.cfg.Peers = append([]PeerConfig(nil), peers...)
 	s.cfgMu.Unlock()
 	s.pair.resolve(peers) // adding a waiting device's key is how the app approves it
+	s.noteGrants(peers)
+	s.evaluateLimits(time.Now())
 	for _, p := range added {
 		s.log.Infof("wg", "Device added: %s (%s) at %s", p.Name, shortKey(p.PublicKey), p.Address)
 	}
@@ -518,6 +547,11 @@ type Status struct {
 
 	// Devices waiting for someone to tap Allow in the app.
 	Pairing []PairRequest `json:"pairing"`
+
+	// The all-devices cap as of now, and devices' unanswered requests for
+	// more time or data.
+	Cap  []RuleStatus `json:"cap"`
+	Asks []Ask        `json:"asks"`
 }
 
 // PeerStatus is one device, merged with WireGuard's live state.
@@ -534,6 +568,9 @@ type PeerStatus struct {
 	// 25 s, so "seen in the last 40 s" means connected; WireGuard handshakes
 	// only happen every 2 minutes and reset when the device list changes.
 	LastSeen int64 `json:"last_seen"`
+
+	// Limit is the device's data limits as of now.
+	Limit LimitStatus `json:"limit"`
 }
 
 // Status reports counters, interfaces and devices.
@@ -552,13 +589,18 @@ func (s *Server) Status() Status {
 		Uptime:     int64(time.Since(s.started).Seconds()),
 		WebError:   s.webErr,
 		Pairing:    s.pair.list(),
+		Asks:       s.asks.pending(time.Now()),
 	}
+	s.limMu.Lock()
+	st.Cap = s.capStatus
+	limits := s.limStatus
+	s.limMu.Unlock()
 	// Each configured device, with WireGuard's live numbers when it has any.
 	live := s.livePeers()
 	st.Peers = make([]PeerStatus, 0, len(cfg.Peers))
 	for _, dev := range cfg.Peers {
 		row := PeerStatus{Name: dev.Name, PublicKey: dev.PublicKey, Address: dev.Address,
-			LastSeen: s.stats.lastSeen(dev.PublicKey)}
+			LastSeen: s.stats.lastSeen(dev.PublicKey), Limit: limits[dev.PublicKey]}
 		if wg := live[dev.PublicKey]; wg != nil {
 			row.Endpoint = wg.Endpoint
 			row.LastHandshake = wg.LastHandshake
@@ -632,6 +674,7 @@ func (s *Server) statsLoop() {
 				names[p.PublicKey] = p.Name
 			}
 			s.stats.record(now, counters, names)
+			s.evaluateLimits(now)
 			if err := s.stats.save(now, false); err != nil {
 				s.log.WarnHint("usage", "Usage history may be incomplete; free up space on the iPhone if it's full.", "Couldn't save usage: %v", err)
 			}
@@ -686,15 +729,24 @@ PersistentKeepalive = 25
 // copyCounting is io.Copy that adds to total as data flows rather than when
 // the connection ends, so the app's live rate and totals include long
 // downloads and kept-alive connections. It returns the bytes copied.
-func copyCounting(dst io.Writer, src io.Reader, total *atomic.Int64) int64 {
+// pace, if set, may hold each write back (a slowed device, enforce.go).
+func copyCounting(dst io.Writer, src io.Reader, total *atomic.Int64, pace func(n int)) int64 {
 	buf := make([]byte, 32<<10)
 	var sum int64
 	for {
 		n, err := src.Read(buf)
-		if n > 0 {
-			w, werr := dst.Write(buf[:n])
+		for off := 0; off < n; {
+			chunk := n - off
+			if pace != nil && chunk > paceChunk {
+				chunk = paceChunk // shorter waits, smoother flow
+			}
+			if pace != nil {
+				pace(chunk)
+			}
+			w, werr := dst.Write(buf[off : off+chunk])
 			total.Add(int64(w))
 			sum += int64(w)
+			off += w
 			if werr != nil {
 				return sum
 			}
@@ -703,4 +755,81 @@ func copyCounting(dst io.Writer, src io.Reader, total *atomic.Int64) int64 {
 			return sum
 		}
 	}
+}
+
+// evaluateLimits re-decides every device's limits, applies them to
+// packets, and turns limits being reached into events and log entries.
+func (s *Server) evaluateLimits(now time.Time) {
+	if s.stats == nil {
+		return
+	}
+	cfg := s.Config()
+	statuses, capRules, evs := s.stats.limits(now, cfg.Peers, cfg.Limits, true)
+	s.limMu.Lock()
+	s.limStatus, s.capStatus = statuses, capRules
+	s.limMu.Unlock()
+	s.applyLimits(statuses, cfg.Peers, cfg.Limits)
+	names := map[string]string{}
+	for _, p := range cfg.Peers {
+		names[p.PublicKey] = p.Name
+	}
+	for _, e := range evs {
+		ev := Event{Kind: e.kind, Key: e.key, Name: names[e.key], Period: e.period, Bytes: e.bytes, Used: e.used}
+		switch e.kind {
+		case EventLimit:
+			ev.Action = statuses[e.key].Action
+			if statuses[e.key].State == StateExtended {
+				ev.Action = ActionNotify // a grant still lets it through
+			}
+			s.log.Infof("limits", "%q used its %s limit (%s): %s", ev.Name, periodWord(e.period), humanBytes(e.bytes), actionWord(ev.Action))
+		case EventCap:
+			ev.Action = cfg.Limits.capAction()
+			s.log.Infof("limits", "All devices used the %s limit (%s): %s", periodWord(e.period), humanBytes(e.bytes), actionWord(ev.Action))
+		case EventWarn:
+			s.log.Infof("limits", "%q used %s of its %s limit (%s)", ev.Name, humanBytes(e.used), periodWord(e.period), humanBytes(e.bytes))
+		}
+		s.events.add(ev)
+	}
+}
+
+// limitStatus is one device's limits and the cap, as last decided.
+func (s *Server) limitStatus(key string) (LimitStatus, []RuleStatus) {
+	s.limMu.Lock()
+	defer s.limMu.Unlock()
+	return s.limStatus[key], s.capStatus
+}
+
+// SetLimits replaces the app-wide limit settings without restarting.
+func (s *Server) SetLimits(ls LimitSettings) {
+	s.cfgMu.Lock()
+	s.cfg.Limits = ls
+	s.cfgMu.Unlock()
+	s.evaluateLimits(time.Now())
+}
+
+// EventsJSON returns events after a sequence number (see events.go).
+func (s *Server) EventsJSON(after int64) string { return s.events.json(after) }
+
+func periodWord(p string) string {
+	switch p {
+	case PeriodHour:
+		return "hourly"
+	case PeriodDay:
+		return "daily"
+	case PeriodWeek:
+		return "weekly"
+	case PeriodMonth:
+		return "monthly"
+	}
+	return "total"
+}
+
+func actionWord(a string) string {
+	switch a {
+	case ActionBlock:
+		return "blocked"
+	case ActionSlow:
+		return "slowed down"
+	}
+	return "only reported"
 }

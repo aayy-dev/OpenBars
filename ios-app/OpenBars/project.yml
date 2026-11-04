@@ -86,6 +86,9 @@ targets:
     sources:
       - Tunnel
       - path: Shared/SharedState.swift # tells the control and widgets it's running
+      - path: Shared/Limits.swift # event and limit types
+      - path: Shared/Notifier.swift # notifications from background sharing
+      - path: Shared/Watchdog.swift # "Sharing stopped" when iOS ends it outright
       - path: Client/LogModel.swift # log entries and messages shared with the app
     dependencies:
       - framework: Frameworks/WGCore.xcframework

@@ -24,6 +24,10 @@ const (
 	keepHours   = 7 * 24
 	keepDays    = 400
 	saveEvery   = time.Minute
+	// Busier traffic is saved sooner, so a crash or a killed app loses at
+	// most about this much usage (which data limits count on).
+	saveAfterBytes = 10_000_000
+	saveSoonest    = 5 * time.Second
 )
 
 // Rates is [down, up] in bytes.
@@ -65,6 +69,13 @@ type usageFile struct {
 	// can say "last seen" across restarts. Connected devices send keepalives
 	// at least every 25 s, so a recent time also means "connected now".
 	Seen map[string]int64 `json:"seen,omitempty"`
+
+	// For data limits (limits.go): bytes each device ever moved ("" = all
+	// devices), that counter at moments limits count from, and which limit
+	// notices were already sent.
+	Lifetime map[string]int64 `json:"lifetime,omitempty"`
+	Marks    map[string]int64 `json:"marks,omitempty"`
+	Fired    map[string]int64 `json:"fired,omitempty"`
 }
 
 type stats struct {
@@ -76,6 +87,8 @@ type stats struct {
 	usage usageFile
 	dirty bool
 	saved time.Time
+	// unsaved is the traffic recorded since the last save.
+	unsaved int64
 }
 
 func newStats(path, timeZone string, log *Logger) *stats {
@@ -87,7 +100,8 @@ func newStats(path, timeZone string, log *Logger) *stats {
 			log.Warnf("usage", "Unknown time zone %q, using %s", timeZone, st.loc)
 		}
 	}
-	st.usage = usageFile{Version: 1, Hours: map[string]*UsageBucket{}, Days: map[string]*UsageBucket{}, Names: map[string]string{}, Seen: map[string]int64{}}
+	st.usage = usageFile{Version: 1, Hours: map[string]*UsageBucket{}, Days: map[string]*UsageBucket{}, Names: map[string]string{}, Seen: map[string]int64{},
+		Lifetime: map[string]int64{}, Marks: map[string]int64{}, Fired: map[string]int64{}}
 	if path != "" {
 		if b, err := os.ReadFile(path); err != nil && !os.IsNotExist(err) {
 			log.WarnHint("usage", "Usage history starts over.", "Can't read %s: %v", filepath.Base(path), err)
@@ -105,6 +119,15 @@ func newStats(path, timeZone string, log *Logger) *stats {
 				}
 				if u.Seen != nil {
 					st.usage.Seen = u.Seen
+				}
+				if u.Lifetime != nil {
+					st.usage.Lifetime = u.Lifetime
+				}
+				if u.Marks != nil {
+					st.usage.Marks = u.Marks
+				}
+				if u.Fired != nil {
+					st.usage.Fired = u.Fired
 				}
 			} else {
 				log.WarnHint("usage", "Usage history starts over.", "Can't read %s, starting over: %v", filepath.Base(path), err)
@@ -141,6 +164,7 @@ func (st *stats) record(now time.Time, counters map[string]Rates, names map[stri
 		smp.Peers[k] = d
 		total[0] += d[0]
 		total[1] += d[1]
+		st.usage.Lifetime[k] += d[0] + d[1]
 	}
 	for k := range st.prev {
 		if _, ok := counters[k]; !ok {
@@ -155,6 +179,8 @@ func (st *stats) record(now time.Time, counters map[string]Rates, names map[stri
 	}
 
 	if total[0] != 0 || total[1] != 0 {
+		st.usage.Lifetime[""] += total[0] + total[1]
+		st.unsaved += total[0] + total[1]
 		local := now.In(st.loc)
 		hourKey := strconv.FormatInt(time.Date(local.Year(), local.Month(), local.Day(), local.Hour(), 0, 0, 0, st.loc).Unix(), 10)
 		dayKey := local.Format("2006-01-02")
@@ -193,13 +219,20 @@ func (st *stats) prune(now time.Time) {
 			delete(st.usage.Days, k)
 		}
 	}
+	st.pruneLimits(now)
 }
 
-// save writes the usage file if it changed (at most once a minute unless forced).
+// save writes the usage file if it changed: at most once a minute, or every
+// few seconds while a lot of data moves, unless forced.
 func (st *stats) save(now time.Time, force bool) error {
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	if st.path == "" || !st.dirty || (!force && now.Sub(st.saved) < saveEvery) {
+	if st.path == "" || !st.dirty {
+		return nil
+	}
+	since := now.Sub(st.saved)
+	due := since >= saveEvery || (since >= saveSoonest && st.unsaved >= saveAfterBytes)
+	if !force && !due {
 		return nil
 	}
 	st.prune(now)
@@ -219,6 +252,7 @@ func (st *stats) save(now time.Time, force bool) error {
 	}
 	st.dirty = false
 	st.saved = now
+	st.unsaved = 0
 	return nil
 }
 

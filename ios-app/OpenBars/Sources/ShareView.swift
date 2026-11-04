@@ -6,13 +6,17 @@ import SwiftUI
 struct ShareView: View {
     /// What's presented over the Share tab.
     private enum Sheet: Identifiable {
-        case settings, log, addDevice
+        case settings, log, addDevice, limits
         var id: Self { self }
     }
 
     @EnvironmentObject var store: Store
     @State private var sheet: Sheet?
     @State private var usageRange: UsageRange = .today
+    /// Screenshot mode: a device's page to open (`-showDevice N`).
+    @State private var demoDeviceID: UUID?
+    /// The one-time "New: Data Limits" card was dismissed or used.
+    @AppStorage("limitsIntroSeen") private var limitsIntroSeen = false
 
     var body: some View {
         NavStack {
@@ -32,6 +36,9 @@ struct ShareView: View {
             #if DEBUG
             .onAppear { showDemoScreen(scroller) }
             #endif
+            .navigationDestinationCompat(isPresented: Binding(get: { demoDeviceID != nil }, set: { if !$0 { demoDeviceID = nil } })) {
+                if let id = demoDeviceID { DeviceDetailView(deviceID: id) }
+            }
             }
             .navigationTitle("Open Bars")
             .navigationBarTitleDisplayMode(.inline)
@@ -48,18 +55,20 @@ struct ShareView: View {
                 case .settings: SettingsView(settings: store.state.settings)
                 case .log: NavStack { LogBookView(book: .share) }
                 case .addDevice: AddDeviceView()
+                case .limits: LimitSettingsSheet(settings: store.state.settings)
                 }
             }
-            .alert(
-                "Allow “\(store.nextPairingRequest?.name ?? "device")” to connect?",
-                isPresented: Binding(get: { store.nextPairingRequest != nil && sheet != .addDevice }, set: { _ in }),
-                presenting: store.nextPairingRequest
-            ) { r in
-                Button("Allow") { store.approvePairing(r) }
-                Button("Don't Allow", role: .cancel) { store.denyPairing(r) }
-            } message: { r in
-                Text("A device on your hotspot (\(r.from)) wants to use this iPhone's connection through Open Bars. Only allow devices you know.")
-            }
+            .background(
+                // A separate view, so this sheet and the one above don't collide.
+                Color.clear.sheet(item: Binding(
+                    get: { sheet == nil ? store.nextPairingRequest : nil },
+                    set: { _ in } // closes once answered
+                )) { r in
+                    PairingSheet(request: r)
+                        .environmentObject(store)
+                        .interactiveDismissDisabled() // Allow or Don't Allow, like the old alert
+                }
+            )
             .onAppear { store.refreshUsageSoon() }
         }
     }
@@ -71,6 +80,11 @@ struct ShareView: View {
         guard DemoMode.on else { return }
         let args = ProcessInfo.processInfo.arguments
         if args.contains("-showAddDevice") { sheet = .addDevice }
+        if args.contains("-showLimits") { sheet = .limits }
+        if let i = args.firstIndex(of: "-showDevice"), i + 1 < args.count, let n = Int(args[i + 1]),
+           store.state.devices.indices.contains(n) {
+            demoDeviceID = store.state.devices[n].id
+        }
         if args.contains("-showUsage") {
             usageRange = .week
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
@@ -84,8 +98,15 @@ struct ShareView: View {
 
     @ViewBuilder private var attentionSection: some View {
         let warnings = store.warnings
-        if !warnings.isEmpty {
+        let asks = store.pendingAsks
+        let showIntro = !limitsIntroSeen && !store.state.devices.isEmpty && !store.limitsInUse
+        if !warnings.isEmpty || !asks.isEmpty || showIntro {
             Section {
+                ForEach(asks) { AskRow(ask: $0) }
+                if showIntro {
+                    LimitsIntroCard(setUp: { limitsIntroSeen = true; sheet = .limits },
+                                    dismiss: { limitsIntroSeen = true })
+                }
                 ForEach(warnings) { w in
                     Label {
                         VStack(alignment: .leading, spacing: 6) {
@@ -103,7 +124,7 @@ struct ShareView: View {
     @ViewBuilder private var devicesSection: some View {
         if store.state.devices.isEmpty {
             Section {
-                GetStartedSteps { sheet = .addDevice }
+                GetStartedSteps(chooseDevice: { sheet = .addDevice }, setLimits: { sheet = .limits })
             } header: {
                 Text("Get Started")
             }
@@ -266,6 +287,7 @@ struct DeviceRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(device.name).font(.body.weight(.medium)).lineLimit(1)
                 HStack(spacing: 6) {
+                    if let badge = store.limitStatus(for: device)?.badge { LimitTag(text: badge) }
                     if device.usesWireGuardApp { WireGuardAppTag() }
                     Text(statusLine(online: online, rate: rate))
                         .font(.caption).foregroundStyle(.secondary).monospacedDigit()
@@ -305,5 +327,21 @@ struct WireGuardAppTag: View {
             .background(Capsule().fill(Color.secondary.opacity(0.15)))
             .foregroundStyle(.secondary)
             .accessibilityLabel("Uses the WireGuard app")
+    }
+}
+
+/// A device's limit state in the device list ("Blocked", "Paused", ...).
+struct LimitTag: View {
+    var text: String
+
+    var body: some View {
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Color.orange.opacity(0.18)))
+            .foregroundStyle(.orange)
     }
 }

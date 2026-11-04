@@ -40,13 +40,20 @@ type PairResponse struct {
 	DeviceName      string `json:"device_name"`
 }
 
-// pairWait is how long a request waits for someone to tap Allow.
-var pairWait = 90 * time.Second
+// pairWait is how long a pairing request's HTTP call waits for someone to
+// tap Allow. The request itself stays open for pairKeep, so it can still be
+// allowed from a notification later: asking again then gets the config at
+// once.
+var (
+	pairWait = 90 * time.Second
+	pairKeep = 10 * time.Minute
+)
 
 type pendingPair struct {
-	req    PairRequest
-	denied bool
-	done   chan struct{}
+	req     PairRequest
+	denied  bool
+	done    chan struct{}
+	expires time.Time
 }
 
 type pairing struct {
@@ -57,6 +64,7 @@ type pairing struct {
 func (p *pairing) list() []PairRequest {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.expire(time.Now())
 	out := []PairRequest{}
 	for _, pp := range p.pending {
 		out = append(out, pp.req)
@@ -64,20 +72,33 @@ func (p *pairing) list() []PairRequest {
 	return out
 }
 
-// add registers (or joins) a pending request for this key.
-func (p *pairing) add(req PairRequest) *pendingPair {
+// expire forgets requests nobody answered in time. Caller holds mu.
+func (p *pairing) expire(now time.Time) {
+	for k, pp := range p.pending {
+		if now.After(pp.expires) {
+			delete(p.pending, k)
+		}
+	}
+}
+
+// add registers (or joins) a pending request for this key; isNew is false
+// when it joined one already waiting.
+func (p *pairing) add(req PairRequest) (pp *pendingPair, isNew bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.pending == nil {
 		p.pending = map[string]*pendingPair{}
 	}
+	now := time.Now()
+	p.expire(now)
 	if pp, ok := p.pending[req.PublicKey]; ok {
 		pp.req.Name = req.Name
-		return pp
+		pp.expires = now.Add(pairKeep)
+		return pp, false
 	}
-	pp := &pendingPair{req: req, done: make(chan struct{})}
+	pp = &pendingPair{req: req, done: make(chan struct{}), expires: now.Add(pairKeep)}
 	p.pending[req.PublicKey] = pp
-	return pp
+	return pp, true
 }
 
 // resolve finishes requests whose keys are now devices (approved).
@@ -103,14 +124,6 @@ func (p *pairing) deny(pub string) bool {
 	close(pp.done)
 	delete(p.pending, pub)
 	return true
-}
-
-func (p *pairing) drop(pub string, pp *pendingPair) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.pending[pub] == pp {
-		delete(p.pending, pub)
-	}
 }
 
 // DenyPairing rejects a waiting request (the app's "Don't Allow").
@@ -234,20 +247,23 @@ func (s *Server) webPair(w http.ResponseWriter, r *http.Request) {
 	default:
 		kind = ""
 	}
-	pp := s.pair.add(PairRequest{Name: name, Kind: kind, PublicKey: req.PublicKey, From: from, Since: time.Now().Unix()})
-	s.log.Infof("pair", "%q (%s) is asking to connect; approve it in the app", name, from)
+	pr := PairRequest{Name: name, Kind: kind, PublicKey: req.PublicKey, From: from, Since: time.Now().Unix()}
+	pp, isNew := s.pair.add(pr)
+	if isNew {
+		s.log.Infof("pair", "%q (%s) is asking to connect; approve it in the app", name, from)
+		s.events.add(Event{Kind: EventPair, Key: pr.PublicKey, Name: name, Pair: &pr})
+	}
 
 	t := time.NewTimer(pairWait)
 	defer t.Stop()
 	select {
 	case <-pp.done:
 	case <-t.C:
-		s.pair.drop(req.PublicKey, pp)
-		s.log.Infof("pair", "%q wasn't approved in time", name)
+		// Still open for a while: allowing it later works on the next try.
+		s.log.Infof("pair", "%q wasn't approved yet; it can still be allowed for a few minutes", name)
 		writeJSON(w, http.StatusRequestTimeout, map[string]string{"error": "not approved in time"})
 		return
 	case <-r.Context().Done():
-		s.pair.drop(req.PublicKey, pp)
 		s.log.Infof("pair", "%q stopped waiting for approval", name)
 		return
 	case <-s.ctx.Done():

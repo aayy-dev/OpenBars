@@ -45,6 +45,11 @@ func (s *Server) handleTCP(r *tcp.ForwarderRequest) {
 	dst := netip.AddrPortFrom(addrFromTCPIP(id.LocalAddress), id.LocalPort)
 	client := netip.AddrPortFrom(addrFromTCPIP(id.RemoteAddress), id.RemotePort)
 
+	if dst.Addr() == s.gw && dst.Port() == statusPagePort {
+		s.serveStatusConn(r) // served right here: see statuspage.go
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(s.ctx, tcpDialBudget)
 	out, err := s.dialUpstream(ctx, dst)
 	cancel()
@@ -73,6 +78,10 @@ func (s *Server) handleTCP(r *tcp.ForwarderRequest) {
 	intvl := tcpip.KeepaliveIntervalOption(tcpKeepIntvl)
 	ep.SetSockOpt(&intvl)
 	in := gonet.NewTCPConn(&wq, ep)
+	// Blocking a device resets its connections (enforce.go): a reset goes
+	// out at once, where a close would wait behind data it no longer acks.
+	unregister := s.conns.add(client.Addr(), func() { ep.Abort(); in.Close(); out.Close() })
+	defer unregister()
 
 	s.tcpActive.Add(1)
 	s.tcpTotal.Add(1)
@@ -85,14 +94,14 @@ func (s *Server) handleTCP(r *tcp.ForwarderRequest) {
 	var up, down int64
 	done := make(chan struct{}, 2)
 	go func() {
-		up = copyCounting(out, in, &s.bytesUp)
+		up = copyCounting(out, in, &s.bytesUp, s.pacer(client.Addr(), true))
 		if tc, ok := out.(*net.TCPConn); ok {
 			tc.CloseWrite() // the device is done sending
 		}
 		done <- struct{}{}
 	}()
 	go func() {
-		down = copyCounting(in, out, &s.bytesDown)
+		down = copyCounting(in, out, &s.bytesDown, s.pacer(client.Addr(), false))
 		in.CloseWrite()
 		done <- struct{}{}
 	}()

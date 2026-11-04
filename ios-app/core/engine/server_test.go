@@ -176,7 +176,7 @@ func TestSetPeersStoresBeforeResolving(t *testing.T) {
 	var peers []PeerConfig
 	for i := 0; i < 30; i++ {
 		_, pub := newKeyPair(t)
-		pp := srv.pair.add(PairRequest{Name: "x", PublicKey: pub})
+		pp, _ := srv.pair.add(PairRequest{Name: "x", PublicKey: pub})
 		found := make(chan bool, 1)
 		go func() {
 			<-pp.done
@@ -214,7 +214,7 @@ func jsonKeys(t *testing.T, v any) []string {
 // The app's decoder fails on any missing key, so every key must always be
 // there, even when empty.
 func TestJSONKeysAlwaysPresent(t *testing.T) {
-	status := []string{"bytes_down", "bytes_up", "egress_if", "listen_port", "net", "pairing", "peers", "running", "tcp_active", "tcp_total", "udp_flows", "uptime", "web_error"}
+	status := []string{"asks", "bytes_down", "bytes_up", "cap", "egress_if", "listen_port", "net", "pairing", "peers", "running", "tcp_active", "tcp_total", "udp_flows", "uptime", "web_error"}
 	if got := jsonKeys(t, Status{}); !reflect.DeepEqual(got, status) {
 		t.Fatalf("Status keys %v", got)
 	}
@@ -222,7 +222,7 @@ func TestJSONKeysAlwaysPresent(t *testing.T) {
 	if got := jsonKeys(t, NetInfo{CellularIdx: 3}); !reflect.DeepEqual(got, netKeys) {
 		t.Fatalf("NetInfo keys %v", got)
 	}
-	peer := []string{"address", "endpoint", "last_handshake", "last_seen", "name", "public_key", "rx_bytes", "tx_bytes"}
+	peer := []string{"address", "endpoint", "last_handshake", "last_seen", "limit", "name", "public_key", "rx_bytes", "tx_bytes"}
 	if got := jsonKeys(t, PeerStatus{}); !reflect.DeepEqual(got, peer) {
 		t.Fatalf("PeerStatus keys %v", got)
 	}

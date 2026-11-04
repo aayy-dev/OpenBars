@@ -195,8 +195,9 @@ func TestEndToEnd(t *testing.T) {
 	log.SetEcho(func(s string) { t.Log(s) })
 	srv, err := Start(Config{
 		PrivateKey: serverPriv, ListenPort: 51999, WebPort: 18080, ConnectPort: 18080,
-		DNS:   []string{dns.addr.String()},
-		Peers: []PeerConfig{{Name: "laptop", PublicKey: clientPub, PrivateKey: clientPriv, Address: "10.66.66.2"}},
+		DNS: []string{dns.addr.String()},
+		Peers: []PeerConfig{{Name: "laptop", PublicKey: clientPub, PrivateKey: clientPriv, Address: "10.66.66.2",
+			ConfUntil: time.Now().Add(10 * time.Minute).Unix()}},
 	}, log)
 	if err != nil {
 		t.Fatal(err)
@@ -442,6 +443,15 @@ func TestEndToEnd(t *testing.T) {
 		}
 		if cd := resp.Header.Get("Content-Disposition"); cd != `attachment; filename="laptop.conf"` {
 			t.Fatalf("Content-Disposition %q", cd)
+		}
+		// Once only: nobody else on the hotspot can take the same key.
+		resp, err = c.http.Get("http://10.66.66.1:18080/conf/0/laptop.conf")
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != 404 {
+			t.Fatalf("second download: %d", resp.StatusCode)
 		}
 		resp, err = c.http.Get("http://10.66.66.1:18080/nope")
 		if err != nil {

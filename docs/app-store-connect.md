@@ -121,9 +121,13 @@ Use these for TestFlight external testing and App Store review (Notes, 4000). Do
 >
 > Without a second Open Bars device: in Share, tap Add › Something else (With the WireGuard app). It creates a QR code and config file for the WireGuard app on any device.
 >
+> Data limits and notifications (Share › a device, and Settings › Data Limits): the sharing iPhone can limit how much data each device uses, pause a device, and slow or block it at a limit. A connected device sees its own usage at http://10.66.66.1 and can ask for more; the request appears on the sharing iPhone. Notifications (pairing requests, limits, requests for more, sharing stopped) are local notifications posted by Open Bars itself. All of this stays on the user's devices.
+>
 > How Open Bars uses the Network Extension (NETunnelProviderManager):
 > • Connect (iPhone, iPad, Mac): a packet tunnel that sends that device's traffic to the sharing iPhone. On-demand rules turn it on only on that iPhone's hotspot.
 > • Keep sharing in the background (optional, off by default, Share › Settings): the sharing server runs in a packet tunnel provider so it keeps running when the iPhone is locked. That tunnel sets no routes and carries none of the iPhone's own traffic.
+>
+> When sharing runs in the app instead (the default), sharing continues for up to about 30 seconds after the app leaves the screen, using a standard background task (beginBackgroundTask), so a quick switch to another app doesn't drop the devices. It then stops with the app and posts a local notification saying so.
 >
 > Open Bars collects no data and has no servers. The first screen and the Share and Connect setup say so before use, with a link to the privacy policy (guideline 5.4). The app isn't offered in China mainland. The developer is enrolled as an organization. The app is open source: https://github.com/aayy-dev/OpenBars
 

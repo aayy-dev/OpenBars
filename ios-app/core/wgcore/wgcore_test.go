@@ -65,7 +65,7 @@ func TestStopped(t *testing.T) {
 		t.Fatal("stopped stubs")
 	}
 	st := StatusJSON()
-	want := []string{"bytes_down", "bytes_up", "egress_if", "listen_port", "net", "pairing", "peers", "running", "tcp_active", "tcp_total", "udp_flows", "uptime", "web_error"}
+	want := []string{"asks", "bytes_down", "bytes_up", "cap", "egress_if", "listen_port", "net", "pairing", "peers", "running", "tcp_active", "tcp_total", "udp_flows", "uptime", "web_error"}
 	if got := keys(t, st); !reflect.DeepEqual(got, want) {
 		t.Fatalf("stopped status keys %v", got)
 	}
@@ -119,7 +119,7 @@ func TestLifecycle(t *testing.T) {
 	if !status.Running || status.Port != 51971 || len(status.Peers) != 1 || status.Pairing == nil {
 		t.Fatal(st)
 	}
-	peerKeys := []string{"address", "endpoint", "last_handshake", "last_seen", "name", "public_key", "rx_bytes", "tx_bytes"}
+	peerKeys := []string{"address", "endpoint", "last_handshake", "last_seen", "limit", "name", "public_key", "rx_bytes", "tx_bytes"}
 	var full struct {
 		Peers []json.RawMessage `json:"peers"`
 	}
@@ -224,5 +224,25 @@ func TestLogAPI(t *testing.T) {
 	if len(q.Entries) != 3 || q.Entries[0].Rep != 0 || q.Entries[1].Rep != 3 || q.Entries[1].Hint != "Is Personal Hotspot on?" ||
 		q.Entries[1].Msg != q.Entries[0].Msg || q.Entries[2].Msg != "something else" {
 		t.Fatalf("repeats: %+v", q.Entries)
+	}
+}
+
+func TestLimitsAPI(t *testing.T) {
+	if err := SetLimits(`{"action":"slow","slow_kbps":500}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetLimits(`nope`); err == nil {
+		t.Fatal("bad JSON accepted")
+	}
+	if got := EventsJSON(7); got != `{"next":7,"events":[]}` {
+		t.Fatalf("stopped events %s", got)
+	}
+	if DenyAsk("x") {
+		t.Fatal("denied a request while stopped")
+	}
+	got := ReadLimitsJSON(t.TempDir()+"/none.json", "UTC",
+		`{"peers":[{"name":"kid","public_key":"K","address":"10.66.66.2","limit":{"rules":[{"period":"day","bytes":100}]}}]}`)
+	if !strings.Contains(got, `"K":{"state":"","rules":[{"period":"day","bytes":100,"used":0,`) {
+		t.Fatalf("ReadLimitsJSON %s", got)
 	}
 }

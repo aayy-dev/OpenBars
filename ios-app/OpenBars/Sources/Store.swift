@@ -20,6 +20,13 @@ struct Device: Codable, Identifiable, Hashable {
     var address: String
     /// DeviceKind raw value, for the icon ("mac", "laptop", ...).
     var kind: String? = nil
+    /// Data limits; nil = none.
+    var limit: DeviceLimit? = nil
+    /// WireGuard-app devices: the config page offers the .conf once, until
+    /// this time (unix seconds).
+    var confUntil: Int64? = nil
+    /// When it was removed (only set on records kept in removedDevices).
+    var removedAt: Int64? = nil
 
     /// Set up with the WireGuard app (QR/.conf) rather than paired from Open Bars.
     var usesWireGuardApp: Bool { !privateKey.isEmpty }
@@ -50,6 +57,37 @@ struct AppSettings: Codable, Equatable {
     /// the app (apps can't switch it on; Shortcuts can).
     var hotspotShortcut: Bool = false
     var hotspotShortcutName: String = "Open Bars Hotspot"
+
+    // Data limits (Settings › Data Limits).
+    /// What happens when a device reaches a limit, unless it has its own.
+    var limitAction: LimitAction = .block
+    /// The speed for "Slow down", in kbps.
+    var slowKbps: Int = 1000
+    /// Limits a newly allowed device starts with (empty = no limit).
+    var newDeviceRules: [LimitRule] = []
+    /// Limits for all devices together.
+    var capRules: [LimitRule] = []
+    /// What happens when all devices together reach a limit.
+    var capAction: LimitAction = .block
+    /// Day of the month monthly limits start over (your billing day).
+    var billingDay: Int = 1
+    /// Which notifications to post.
+    var notifications = NotificationPrefs()
+
+    /// The settings that change what the engine does when it starts (the
+    /// rest apply without restarting sharing).
+    var restartRelevant: AppSettings {
+        var s = self
+        let d = AppSettings()
+        s.limitAction = d.limitAction
+        s.slowKbps = d.slowKbps
+        s.newDeviceRules = d.newDeviceRules
+        s.capRules = d.capRules
+        s.capAction = d.capAction
+        s.billingDay = d.billingDay
+        s.notifications = d.notifications
+        return s
+    }
 }
 
 // Decode field by field so settings saved by older versions (missing the
@@ -68,6 +106,13 @@ extension AppSettings {
         hotspotName = try c.decodeIfPresent(String.self, forKey: .hotspotName) ?? d.hotspotName
         hotspotShortcut = try c.decodeIfPresent(Bool.self, forKey: .hotspotShortcut) ?? d.hotspotShortcut
         hotspotShortcutName = try c.decodeIfPresent(String.self, forKey: .hotspotShortcutName) ?? d.hotspotShortcutName
+        limitAction = try c.decodeIfPresent(LimitAction.self, forKey: .limitAction) ?? d.limitAction
+        slowKbps = try c.decodeIfPresent(Int.self, forKey: .slowKbps) ?? d.slowKbps
+        newDeviceRules = try c.decodeIfPresent([LimitRule].self, forKey: .newDeviceRules) ?? d.newDeviceRules
+        capRules = try c.decodeIfPresent([LimitRule].self, forKey: .capRules) ?? d.capRules
+        capAction = try c.decodeIfPresent(LimitAction.self, forKey: .capAction) ?? d.capAction
+        billingDay = try c.decodeIfPresent(Int.self, forKey: .billingDay) ?? d.billingDay
+        notifications = try c.decodeIfPresent(NotificationPrefs.self, forKey: .notifications) ?? d.notifications
     }
 }
 
@@ -77,6 +122,9 @@ struct PersistedState: Codable {
     var serverPrivateKey: String
     var devices: [Device] = []
     var settings = AppSettings()
+    /// Removed devices, kept so their limits and usage carry on if they
+    /// pair again (newest last). Optional: older files don't have it.
+    var removedDevices: [Device]? = nil
 }
 
 // MARK: - Engine status (StatusJSON, decoded with .convertFromSnakeCase)
@@ -104,6 +152,8 @@ struct PeerStatus: Codable {
     var txBytes: Int64 = 0
     /// When the device last sent anything (unix seconds; kept across restarts).
     var lastSeen: Int64?
+    /// Its data limits as of now.
+    var limit: LimitStatus? = nil
 }
 
 /// The engine's report: whether it runs, counters, devices and pairing requests.
@@ -122,16 +172,16 @@ struct CoreStatus: Codable {
     var webError: String = ""
     var peers: [PeerStatus]? = nil
     var pairing: [PairRequest]? = nil
+    /// The all-devices limit as of now.
+    var cap: [RuleStatus]? = nil
+    /// Devices' unanswered requests for more time or data.
+    var asks: [AskRequest]? = nil
 }
 
-/// A device (Open Bars Connect on a Mac/iPad) asking to be added.
-struct PairRequest: Codable, Hashable, Identifiable {
-    var name: String = ""
-    var kind: String = "" // mac, ipad, iphone
-    var publicKey: String = ""
-    var from: String = ""
-    var since: Int64 = 0
-    var id: String { publicKey }
+/// Limits worked out from saved usage while sharing is off (ReadLimitsJSON).
+struct OfflineLimits: Codable {
+    var peers: [String: LimitStatus]? = nil
+    var cap: [RuleStatus]? = nil
 }
 
 // MARK: - Store
@@ -141,6 +191,9 @@ struct PairRequest: Codable, Hashable, Identifiable {
 /// mode) and what it reports, polled every 2 seconds.
 @MainActor
 final class Store: ObservableObject {
+    /// The one Store: the app's screens and notification buttons share it.
+    static let shared = Store()
+
     @Published var state: PersistedState
     @Published var status = CoreStatus()
     /// Sharing is on: the in-app engine runs, or the background tunnel is up.
@@ -153,6 +206,11 @@ final class Store: ObservableObject {
     @Published private(set) var samples: [TrafficSample] = []
     /// Hourly (7 days) and daily usage, saved by the engine.
     @Published private(set) var usage: UsageSummary?
+    /// Limits from saved usage, while sharing is off.
+    @Published private(set) var offlineLimits: OfflineLimits?
+    /// The last device list push to the background engine (notification
+    /// buttons wait for it before the app is suspended again).
+    var lastPush: Task<Void, Never>?
     private var usageFetched = Date.distantPast
     /// Pairing requests already answered here (the engine drops them a
     /// moment later; this keeps the prompt from showing twice).
@@ -177,6 +235,13 @@ final class Store: ObservableObject {
     /// Published on the first start: it's what makes iOS ask for Local
     /// Network access, which hotspot devices need to reach this iPhone.
     private var bonjour: NetService?
+    /// The extra time iOS gives sharing in the app after Open Bars leaves
+    /// the screen (a standard background task).
+    private var graceTask: UIBackgroundTaskIdentifier = .invalid
+    /// When the scheduled "Sharing paused" notification shows.
+    private var pausedNoticeAt: Date?
+    /// iOS paused Open Bars since it left the screen.
+    private var pausedByIOS = false
     /// The background tunnel's status at the last refresh, to log changes.
     private var lastTunnelStatus: NEVPNStatus?
 
@@ -217,6 +282,9 @@ final class Store: ObservableObject {
         }
         publishShared()
         hookUpLog()
+        #if DEBUG
+        listenForDebugCommands()
+        #endif
         refresh()
         pollTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
@@ -269,6 +337,13 @@ final class Store: ObservableObject {
 
     /// Called when the app comes on screen.
     func appBecameActive() {
+        endGrace()
+        if pausedByIOS {
+            pausedByIOS = false
+            if running && !runningInBackground {
+                log.add(.info, .share, "Open Bars is back on screen, so sharing in the app carries on")
+            }
+        }
         refresh()
         takePendingRequests()
         guard autoStartPending, tunnelLoaded else { return }
@@ -276,18 +351,96 @@ final class Store: ObservableObject {
         if !running && !busy { start() }
     }
 
-    /// Called when the app leaves the screen. The in-app engine pauses with
-    /// the app; background sharing carries on.
+    /// Called when the app leaves the screen. Sharing in the app keeps going
+    /// for as long as iOS allows (a standard background task, usually about
+    /// 30 seconds), then pauses with the app until it's back on screen.
+    /// Background sharing carries on regardless.
     func appWentToBackground() {
-        guard running, !runningInBackground else { return }
-        log.add(.warn, .share, "Open Bars left the screen, so sharing in the app pauses until you come back",
+        guard running, !runningInBackground, graceTask == .invalid else { return }
+        graceTask = UIApplication.shared.beginBackgroundTask(withName: "Sharing in the app") { [weak self] in
+            // Time's up: iOS suspends Open Bars when this returns.
+            self?.notePaused()
+            self?.endGraceTask()
+        }
+        guard graceTask != .invalid else {
+            notePaused()
+            return
+        }
+        log.add(.info, .share, "Open Bars left the screen. Sharing in the app keeps going for as long as iOS allows, usually about 30 seconds")
+        // Scheduled for just after the time should run out, in case iOS ends
+        // Open Bars before saying so; taken back if it comes back first.
+        schedulePausedNotice(after: 35)
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard let self, self.graceTask != .invalid else { return }
+            let left = UIApplication.shared.backgroundTimeRemaining
+            if left < 600 { self.schedulePausedNotice(after: max(1, left + 2)) }
+        }
+    }
+
+    private static let pausedTitle = "Sharing paused"
+    private static let pausedBody = "iOS paused Open Bars after it left the screen, so your devices lost the connection. Open it to keep sharing, or turn on Settings › Keep sharing in the background."
+
+    private func schedulePausedNotice(after seconds: TimeInterval) {
+        guard state.settings.notifications.paused else { return }
+        pausedNoticeAt = Date().addingTimeInterval(seconds)
+        Notifier.postSimple(id: "paused", title: Store.pausedTitle, body: Store.pausedBody, after: seconds)
+    }
+
+    /// Sharing in the app is pausing with the app.
+    private func notePaused() {
+        guard !pausedByIOS else { return }
+        pausedByIOS = true
+        log.add(.warn, .share, "iOS paused Open Bars, so sharing in the app is paused until you come back",
                 hint: "To keep sharing with the screen locked or in other apps, turn on Settings › Keep sharing in the background.")
+        guard state.settings.notifications.paused else { return }
+        if let at = pausedNoticeAt, at <= Date() { return } // the scheduled one has shown
+        // Show it now instead of the scheduled one (posting one with the
+        // same id doesn't cancel a scheduled one). The app is about to be
+        // suspended, so wait briefly for iOS to take it.
+        pausedNoticeAt = Date()
+        Notifier.removePending(id: "paused")
+        let handed = DispatchSemaphore(value: 0)
+        Notifier.postSimple(id: "paused", title: Store.pausedTitle, body: Store.pausedBody) { handed.signal() }
+        _ = handed.wait(timeout: .now() + 0.5)
+    }
+
+    /// Back on screen, or sharing stopped: no more background time, and no
+    /// "Sharing paused" notification.
+    private func endGrace() {
+        endGraceTask()
+        pausedNoticeAt = nil
+        Notifier.remove(id: "paused")
+    }
+
+    private func endGraceTask() {
+        guard graceTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(graceTask)
+        graceTask = .invalid
+    }
+
+    /// Notifications: asked the first time sharing starts, when they start
+    /// to matter (pairing requests, limits, sharing stopping).
+    private func askForNotificationsOnce() {
+        let key = "notificationsAsked"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        Notifier.requestAuthorization()
     }
 
     /// Shortcuts, widgets and the control start sharing from the config the
     /// app last published (they can't run the app's screens).
     private func publishShared() {
         SharedState.backgroundConfig = coreConfigJSON(lowMemory: true)
+        SharedState.notificationPrefs = state.settings.notifications
+        SharedState.limitsInUse = limitsInUse
+    }
+
+    /// Some device, new devices, or all devices together have a limit.
+    var limitsInUse: Bool {
+        let s = state.settings
+        return !s.capRules.isEmpty || !s.newDeviceRules.isEmpty
+            || state.devices.contains { !($0.limit?.rules.isEmpty ?? true) || $0.limit?.paused == true }
     }
 
     // MARK: Personal Hotspot via Shortcuts
@@ -343,11 +496,50 @@ final class Store: ObservableObject {
 
     /// A device as the engine's PeerConfig.
     private static func peerConfig(_ d: Device) -> [String: Any] {
-        ["name": d.name, "public_key": d.publicKey, "private_key": d.privateKey, "address": d.address]
+        var p: [String: Any] = ["name": d.name, "public_key": d.publicKey, "private_key": d.privateKey, "address": d.address]
+        if let l = d.limit, !l.isEmpty { p["limit"] = limitConfig(l) }
+        if let c = d.confUntil { p["conf_until"] = c }
+        return p
+    }
+
+    private static func ruleConfig(_ r: LimitRule) -> [String: Any] {
+        var d: [String: Any] = ["period": r.period.rawValue, "bytes": r.bytes]
+        if let s = r.start { d["start"] = s }
+        return d
+    }
+
+    /// A device's limits as the engine's DeviceLimit.
+    private static func limitConfig(_ l: DeviceLimit) -> [String: Any] {
+        var d: [String: Any] = ["rules": l.rules.map(ruleConfig), "paused": l.paused]
+        if let a = l.action { d["action"] = a.rawValue }
+        if let k = l.slowKbps { d["slow_kbps"] = k }
+        if let r = l.reset { d["reset"] = r }
+        if let k = l.keys, !k.isEmpty { d["keys"] = k }
+        d["grants"] = l.grants.map { g -> [String: Any] in
+            var x: [String: Any] = ["id": g.id, "given": g.given]
+            if let b = g.bytes { x["bytes"] = b }
+            if let u = g.until { x["until"] = u }
+            if let a = g.ask { x["ask"] = a }
+            return x
+        }
+        return d
+    }
+
+    /// The app-wide limit settings as the engine's LimitSettings.
+    var limitSettingsConfig: [String: Any] {
+        let s = state.settings
+        return [
+            "action": s.limitAction.rawValue,
+            "slow_kbps": s.slowKbps,
+            "month_start": s.billingDay,
+            "week_start": Calendar.current.firstWeekday - 1,
+            "cap": s.capRules.map(Store.ruleConfig),
+            "cap_action": s.capAction.rawValue,
+        ]
     }
 
     /// The engine's Config JSON. lowMemory: for the Network Extension.
-    private func coreConfigJSON(lowMemory: Bool = false) -> String {
+    func coreConfigJSON(lowMemory: Bool = false) -> String {
         let s = state.settings
         let config: [String: Any] = [
             "private_key": state.serverPrivateKey,
@@ -362,6 +554,7 @@ final class Store: ObservableObject {
             // own; "" lets it pick its own when there's no group.
             "usage_file": lowMemory ? (Store.sharedUsageURL?.path ?? "") : Store.usageURL.path,
             "time_zone": TimeZone.current.identifier,
+            "limits": limitSettingsConfig,
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: config),
               let json = String(data: data, encoding: .utf8) else { return "{}" }
@@ -381,6 +574,7 @@ final class Store: ObservableObject {
         lastError = nil
         stoppingUntil = nil
         advertise() // triggers the Local Network permission prompt
+        askForNotificationsOnce()
         if runHotspot && state.settings.hotspotShortcut { runHotspotShortcut() }
         if state.settings.backgroundSharing {
             // Background: the engine runs in the Network Extension, which iOS
@@ -437,6 +631,7 @@ final class Store: ObservableObject {
             }
         }
         if WgcoreRunning() { WgcoreStop() }
+        endGrace()
         UIApplication.shared.isIdleTimerDisabled = false
         bonjour?.stop()
         bonjour = nil
@@ -498,6 +693,10 @@ final class Store: ObservableObject {
             if !samples.isEmpty { samples = [] }
             if wantUsage {
                 apply(usageJSON: WgcoreReadUsageJSON(Store.usageURL.path, TimeZone.current.identifier, 31))
+                let json = WgcoreReadLimitsJSON(Store.usageURL.path, TimeZone.current.identifier, coreConfigJSON())
+                let d = JSONDecoder()
+                d.keyDecodingStrategy = .convertFromSnakeCase
+                offlineLimits = json.data(using: .utf8).flatMap { try? d.decode(OfflineLimits.self, from: $0) }
             }
         }
     }
@@ -605,13 +804,13 @@ final class Store: ObservableObject {
     // MARK: Devices
 
     /// Saves, then gives the device list to whichever engine runs.
-    private func pushPeers() {
+    func pushPeers() {
         save()
         let peers = state.devices.map(Store.peerConfig)
         guard let data = try? JSONSerialization.data(withJSONObject: peers),
               let json = String(data: data, encoding: .utf8) else { return }
         if tunnel.isActive {
-            Task {
+            lastPush = Task {
                 let reply = await tunnel.send("peers:" + json)
                 if let reply, reply != "ok" {
                     lastError = reply
@@ -652,9 +851,11 @@ final class Store: ObservableObject {
         }
         let privateKey = WgcoreGeneratePrivateKey()
         let trimmed = name.trimmingCharacters(in: .whitespaces)
-        let device = Device(name: trimmed.isEmpty ? Self.defaultName(for: address) : trimmed,
+        var device = Device(name: trimmed.isEmpty ? Self.defaultName(for: address) : trimmed,
                             privateKey: privateKey, publicKey: WgcorePublicKey(privateKey),
                             address: address, kind: kind.rawValue)
+        device.confUntil = Int64(Date().timeIntervalSince1970) + Self.confWindow
+        device.limit = newDeviceLimit()
         state.devices.append(device)
         log.add(.info, .app, "Added “\(device.name)” (\(device.address), \(LogText.shortKey(device.publicKey))) for the WireGuard app")
         pushPeers()
@@ -686,10 +887,29 @@ final class Store: ObservableObject {
 
     /// Allow: the device becomes a normal WireGuard device whose private key
     /// stays on that device. Adding it is what the engine waits for.
-    func approvePairing(_ r: PairRequest) {
+    /// limit: the limits to start with; nil = what it had before if it was
+    /// removed, otherwise the default for new devices.
+    func approvePairing(_ r: PairRequest, limit: DeviceLimit? = nil) {
         answeredPairings.insert(r.publicKey)
         if state.devices.contains(where: { $0.publicKey == r.publicKey }) {
             log.add(.info, .pair, "Allowed “\(r.name)” again (\(LogText.shortKey(r.publicKey)), already added)")
+            pushPeers()
+            return
+        }
+        // Removed earlier and back with the same key: same record, limits and usage.
+        if var old = removedRecord(for: r.publicKey) {
+            state.removedDevices?.removeAll { $0.publicKey == r.publicKey }
+            old.removedAt = nil
+            if let limit { old.limit = limit }
+            if state.devices.contains(where: { $0.address == old.address }) || !old.address.hasPrefix(Self.devicePrefix) {
+                guard let address = freeAddress() else {
+                    lastError = Self.noAddressLeft
+                    return
+                }
+                old.address = address
+            }
+            state.devices.append(old)
+            log.add(.info, .pair, "Allowed “\(r.name)” back (\(LogText.shortKey(r.publicKey))) with its earlier limits and usage, as \(old.address)")
             pushPeers()
             return
         }
@@ -702,7 +922,8 @@ final class Store: ObservableObject {
         let name = r.name.trimmingCharacters(in: .whitespaces)
         state.devices.append(Device(name: name.isEmpty ? Self.defaultName(for: address) : name, privateKey: "",
                                     publicKey: r.publicKey, address: address,
-                                    kind: DeviceKind(rawValue: r.kind)?.rawValue))
+                                    kind: DeviceKind(rawValue: r.kind)?.rawValue,
+                                    limit: limit ?? newDeviceLimit()))
         log.add(.info, .pair, "Allowed “\(r.name)” (\(r.kind.isEmpty ? "device" : r.kind) at \(r.from), \(LogText.shortKey(r.publicKey))) as \(address)")
         pushPeers()
     }
@@ -711,7 +932,7 @@ final class Store: ObservableObject {
         answeredPairings.insert(r.publicKey)
         log.add(.info, .pair, "Didn't allow “\(r.name)” (\(r.from), \(LogText.shortKey(r.publicKey)))")
         if tunnel.isActive {
-            Task { _ = await tunnel.send("deny:" + r.publicKey) }
+            lastPush = Task { _ = await tunnel.send("deny:" + r.publicKey) }
         } else {
             _ = WgcoreDenyPairing(r.publicKey)
         }
@@ -719,15 +940,61 @@ final class Store: ObservableObject {
 
     /// Swipe to delete on the Share tab.
     func removeDevices(at offsets: IndexSet) {
-        for d in offsets.map({ state.devices[$0] }) { logRemoved(d) }
+        for d in offsets.map({ state.devices[$0] }) { logRemoved(d); keepRecord(of: d) }
         state.devices.remove(atOffsets: offsets)
         pushPeers()
     }
 
     func remove(_ device: Device) {
         logRemoved(device)
+        keepRecord(of: device)
         state.devices.removeAll { $0.id == device.id }
         pushPeers()
+    }
+
+    /// A removed device's record, kept so pairing again doesn't reset its
+    /// limits (its usage is kept by key in the usage file anyway).
+    private func keepRecord(of d: Device) {
+        var r = d
+        r.removedAt = Int64(Date().timeIntervalSince1970)
+        r.confUntil = nil
+        var list = (state.removedDevices ?? []).filter { $0.publicKey != d.publicKey }
+        list.append(r)
+        state.removedDevices = Array(list.suffix(Self.keepRemoved))
+    }
+
+    private static let keepRemoved = 100
+    /// How long a new WireGuard-app device's .conf is on the config page.
+    static let confWindow: Int64 = 15 * 60
+
+    func removedRecord(for publicKey: String) -> Device? {
+        state.removedDevices?.last { $0.publicKey == publicKey }
+    }
+
+    /// A removed or current device that looks like this request (same name
+    /// and kind) and has limits: a hint that it may be the same device with
+    /// a new key. Only a hint: the request could say anything.
+    func lookalike(for r: PairRequest) -> Device? {
+        guard removedRecord(for: r.publicKey) == nil else { return nil }
+        let name = r.name.trimmingCharacters(in: .whitespaces).lowercased()
+        let all = state.devices + (state.removedDevices ?? []).reversed()
+        return all.first {
+            $0.publicKey != r.publicKey && $0.name.lowercased() == name
+                && ($0.kind ?? "") == r.kind && !($0.limit?.rules.isEmpty ?? true)
+        }
+    }
+
+    /// The limits a new device starts with (Settings › Data Limits).
+    func newDeviceLimit() -> DeviceLimit? {
+        let rules = state.settings.newDeviceRules.map(Self.starting)
+        return rules.isEmpty ? nil : DeviceLimit(rules: rules)
+    }
+
+    /// A rule ready to save: a total limit counts from now.
+    static func starting(_ r: LimitRule) -> LimitRule {
+        var r = r
+        if r.period == .total, r.start == nil { r.start = Int64(Date().timeIntervalSince1970) }
+        return r
     }
 
     private func logRemoved(_ d: Device) {
@@ -761,12 +1028,18 @@ final class Store: ObservableObject {
     /// Saves new settings and, if anything changed, restarts sharing so
     /// they take effect.
     func updateSettings(_ new: AppSettings) {
+        var new = new
+        new.capRules = new.capRules.map(Self.starting)
         let old = state.settings
         state.settings = new
         save()
         guard old != new else { return }
         log.add(.info, .app, "Settings changed: " + Store.changes(from: old, to: new))
-        restartIfRunning()
+        if old.restartRelevant != new.restartRelevant {
+            restartIfRunning()
+        } else {
+            pushLimits() // data limits and notifications apply as they are
+        }
     }
 
     private static func changes(from a: AppSettings, to b: AppSettings) -> String {
@@ -782,6 +1055,17 @@ final class Store: ObservableObject {
         if a.hotspotName != b.hotspotName { out.append("hotspot name “\(b.hotspotName)”") }
         if a.hotspotShortcut != b.hotspotShortcut { out.append("hotspot shortcut \(onOff(b.hotspotShortcut))") }
         if a.hotspotShortcutName != b.hotspotShortcutName { out.append("shortcut name “\(b.hotspotShortcutName)”") }
+        if a.limitAction != b.limitAction { out.append("at a limit: \(b.limitAction.title.lowercased())") }
+        if a.slowKbps != b.slowKbps { out.append("slow-down speed \(speedTitle(b.slowKbps))") }
+        if a.newDeviceRules != b.newDeviceRules {
+            out.append("new devices: " + (b.newDeviceRules.isEmpty ? "no limit" : b.newDeviceRules.map(\.summary).joined(separator: ", ")))
+        }
+        if a.capRules != b.capRules {
+            out.append("all devices: " + (b.capRules.isEmpty ? "no limit" : b.capRules.map(\.summary).joined(separator: ", ")))
+        }
+        if a.capAction != b.capAction { out.append("all devices at the limit: \(b.capAction.title.lowercased())") }
+        if a.billingDay != b.billingDay { out.append("billing day \(b.billingDay)") }
+        if a.notifications != b.notifications { out.append("notifications") }
         return out.joined(separator: ", ")
     }
 }
@@ -792,6 +1076,9 @@ extension Store {
     /// openbars://hotspot?result=…: Shortcuts reports back after running the
     /// hotspot shortcut. Only a failure needs anything from us.
     func handleURL(_ url: URL) {
+        #if DEBUG
+        if url.scheme == "openbars", url.host == "debug" { handleDebugURL(url); return }
+        #endif
         guard url.scheme == "openbars", url.host == "hotspot" else { return }
         let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         func value(_ name: String) -> String? { query.first { $0.name == name }?.value }
@@ -841,6 +1128,7 @@ extension Store {
                             egressIf: "pdp_ip0", tcpActive: 46, tcpTotal: 1873, udpFlows: 9,
                             bytesUp: peers.reduce(0) { $0 + $1.rxBytes }, bytesDown: peers.reduce(0) { $0 + $1.txBytes },
                             uptime: 2760, peers: peers)
+        addDemoLimits(now: now)
         samples = DemoMode.samples(peers: demoWeights)
         usage = DemoMode.usage(
             devices: state.devices.enumerated().map { i, d in (d.publicKey, d.name, all[i].perDay) },
@@ -848,6 +1136,31 @@ extension Store {
         // Keep it live: a new second of traffic every second.
         pollTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.demoTick() }
+        }
+    }
+
+    /// Limits in the samples: the iPad near its daily limit and asking for
+    /// more, the PC with a weekly limit, the laptop paused, and a monthly
+    /// limit for all devices. `-showPairing` adds a device asking to connect.
+    private func addDemoLimits(now: Int64) {
+        let midnight = endOfToday()
+        let week = midnight + 3 * 24 * 3600
+        let month = midnight + 11 * 24 * 3600
+        state.devices[1].limit = DeviceLimit(rules: [LimitRule(period: .day, bytes: 1_000_000_000)])
+        state.devices[2].limit = DeviceLimit(rules: [LimitRule(period: .week, bytes: 25_000_000_000)], action: .slow, slowKbps: 2000)
+        state.devices[3].limit = DeviceLimit(paused: true)
+        state.settings.capRules = [LimitRule(period: .month, bytes: 60_000_000_000)]
+        state.settings.billingDay = 15
+        var peers = status.peers ?? []
+        peers[1].limit = LimitStatus(state: "warn", rules: [RuleStatus(period: "day", bytes: 1_000_000_000, used: 840_000_000, resets: midnight)])
+        peers[2].limit = LimitStatus(state: "", rules: [RuleStatus(period: "week", bytes: 25_000_000_000, used: 13_600_000_000, resets: week)])
+        peers[3].limit = LimitStatus(state: "paused", action: "block")
+        status.peers = peers
+        status.cap = [RuleStatus(period: "month", bytes: 60_000_000_000, used: 38_400_000_000, resets: month)]
+        status.asks = [AskRequest(id: "demo", key: state.devices[1].publicKey, name: state.devices[1].name, minutes: 60,
+                                  message: "Finishing my homework", since: now - 90, state: "pending")]
+        if ProcessInfo.processInfo.arguments.contains("-showPairing") {
+            status.pairing = [PairRequest(name: "Sam's iPad", kind: "ipad", publicKey: DemoMode.key(50), from: "172.20.10.6", since: now)]
         }
     }
 

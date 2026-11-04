@@ -73,7 +73,7 @@ extension Store {
             out.append(ShareWarning(id: "cell", symbol: "antenna.radiowaves.left.and.right.slash", tint: .orange,
                                     text: "No cellular connection found. Traffic goes out over \(net.defaultIf.isEmpty ? "the default route" : net.defaultIf)."))
         }
-        if net.hotspotIp.isEmpty, status.uptime > 45 {
+        if net.hotspotIp.isEmpty, status.uptime > 45, onlineCount == 0 {
             out.append(ShareWarning(
                 id: "hotspot", symbol: "personalhotspot", tint: .blue,
                 text: "No device has joined yet. Is Personal Hotspot on, with Allow Others to Join? Macs and iPads on your Apple Account can turn it on from their Wi‑Fi menu.",

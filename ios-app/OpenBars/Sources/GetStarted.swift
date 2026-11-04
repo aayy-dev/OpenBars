@@ -118,6 +118,8 @@ struct WelcomeView: View {
 struct GetStartedSteps: View {
     @EnvironmentObject var store: Store
     var chooseDevice: () -> Void
+    /// Opens Data Limits (optional step).
+    var setLimits: (() -> Void)? = nil
 
     var body: some View {
         let requests = store.running ? (store.status.pairing ?? []) : []
@@ -140,11 +142,26 @@ struct GetStartedSteps: View {
                   state: requests.isEmpty ? .todo : .current) {
             ForEach(requests) { PairingRequestRow(request: $0) }
         }
+        if let setLimits {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "speedometer").foregroundStyle(.secondary).frame(width: 24)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Optional: data limits").font(.subheadline.weight(.semibold))
+                    Text(store.limitsInUse
+                         ? "Limits are set. Devices get them when you allow them."
+                         : "Limit how much data devices can use, each or all together. Devices start with no limit unless you set one.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button(store.limitsInUse ? "Change Limits" : "Set Limits", action: setLimits)
+                        .buttonStyle(.bordered).controlSize(.small)
+                }
+            }
+            .padding(.vertical, 4)
+        }
         if store.running && !store.state.settings.backgroundSharing {
             Toggle(isOn: backgroundSharing) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Keep sharing when this iPhone locks")
-                    Text("Recommended. Without it, sharing pauses when you lock this iPhone or leave Open Bars. iOS asks once to add a VPN configuration for it.")
+                    Text("Recommended. Without it, sharing pauses shortly after you lock this iPhone or leave Open Bars. iOS asks once to add a VPN configuration for it.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }

@@ -47,6 +47,11 @@ type netDev struct {
 	// intercept sees every client packet first; true means it took it.
 	// Set once before wireguard-go starts.
 	intercept func(pkt []byte) bool
+
+	// filterIn and filterOut apply data limits (enforce.go) to packets from
+	// and to clients; false drops the packet. Set once before wireguard-go
+	// starts.
+	filterIn, filterOut func(pkt []byte) bool
 }
 
 func newNetDev(mtu int, gateway netip.Addr, lowMemory bool) (*netDev, error) {
@@ -148,6 +153,9 @@ func (d *netDev) send(pkt []byte) {
 	if pkt == nil {
 		return
 	}
+	if d.filterOut != nil && !d.filterOut(pkt) {
+		return
+	}
 	select {
 	case d.out <- pkt:
 	case <-d.done:
@@ -193,6 +201,9 @@ func (d *netDev) Write(bufs [][]byte, offset int) (int, error) {
 // is not retained after it returns.
 func (d *netDev) inject(pkt []byte) {
 	if len(pkt) == 0 {
+		return
+	}
+	if d.filterIn != nil && !d.filterIn(pkt) {
 		return
 	}
 	if d.intercept != nil && d.intercept(pkt) {

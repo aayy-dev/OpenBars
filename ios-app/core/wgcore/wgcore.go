@@ -218,3 +218,56 @@ func DenyPairing(publicKey string) bool {
 	}
 	return s.DenyPairing(publicKey)
 }
+
+// SetLimits replaces the app-wide data limit settings (JSON, engine
+// LimitSettings) without restarting. Bad JSON is an error even when
+// stopped; when stopped it's otherwise a no-op.
+func SetLimits(limitsJSON string) error {
+	var ls engine.LimitSettings
+	if err := json.Unmarshal([]byte(limitsJSON), &ls); err != nil {
+		return fmt.Errorf("bad limit settings: %v", err)
+	}
+	mu.Lock()
+	s := srv
+	mu.Unlock()
+	if s != nil {
+		s.SetLimits(ls)
+	}
+	return nil
+}
+
+// EventsJSON returns the notification-worthy events after a sequence
+// number (0 for all): {"next","events":[...]}. Pass next back next time.
+// When stopped there are none.
+func EventsJSON(after int64) string {
+	mu.Lock()
+	s := srv
+	mu.Unlock()
+	if s == nil {
+		return fmt.Sprintf(`{"next":%d,"events":[]}`, after)
+	}
+	return s.EventsJSON(after)
+}
+
+// DenyAsk declines a device's request for more time or data.
+func DenyAsk(id string) bool {
+	mu.Lock()
+	s := srv
+	mu.Unlock()
+	if s == nil {
+		return false
+	}
+	return s.DenyAsk(id)
+}
+
+// ReadLimitsJSON works out data limits from saved usage while sharing is
+// off. configJSON is an engine Config; only its peers and limits are used.
+// Returns {"peers":{key: limit status},"cap":[...]}.
+func ReadLimitsJSON(path, timeZone, configJSON string) string {
+	var cfg engine.Config
+	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+		return `{"peers":{},"cap":null}`
+	}
+	b, _ := json.Marshal(engine.ReadLimits(path, timeZone, cfg.Peers, cfg.Limits))
+	return string(b)
+}

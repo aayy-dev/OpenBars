@@ -89,7 +89,10 @@ enum DeviceKind: String, CaseIterable, Identifiable {
 
 /// "12.4 MB/s"
 func formatRate(_ bytesPerSecond: Int64) -> String {
-    bytesPerSecond <= 0 ? "0 KB/s" : ByteCountFormatter.string(fromByteCount: bytesPerSecond, countStyle: .decimal) + "/s"
+    // Keepalives alone are tens of bytes a second: "74 bytes/s" is too wide.
+    bytesPerSecond <= 0 ? "0 KB/s"
+        : bytesPerSecond < 1000 ? "<1 KB/s"
+        : ByteCountFormatter.string(fromByteCount: bytesPerSecond, countStyle: .decimal) + "/s"
 }
 
 /// Chart colors: down in the app's green, up in blue.

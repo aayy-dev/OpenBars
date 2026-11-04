@@ -18,6 +18,14 @@ struct SettingsView: View {
                     Text("System follows your device's Light/Dark setting. Applies right away.")
                 }
                 Section {
+                    NavigationLink { LimitSettingsForm(settings: $settings) } label: {
+                        LabeledRow("Data Limits", value: limitSummary)
+                    }
+                } footer: {
+                    Text("Limits for new devices and for all devices together. Each device's own limits are on the device.")
+                }
+                NotificationSettingsSection(prefs: $settings.notifications)
+                Section {
                     Toggle("Use cellular data only", isOn: $settings.bindCellular)
                 } footer: {
                     Text("Your devices' new connections go out over this iPhone's cellular data, even while it's also on Wi‑Fi. If this iPhone has a VPN turned on, connections go through the VPN instead.")
@@ -47,7 +55,7 @@ struct SettingsView: View {
                         Stepper("Port \(String(settings.webPort))", value: $settings.webPort, in: 1024...65535)
                     }
                 } footer: {
-                    Text("A computer on your hotspot can open this page in its web browser to download its config file. Anyone on your hotspot can open the page.")
+                    Text("A computer on your hotspot can open this page in its web browser to download its config file. Each config is offered once, for 15 minutes after you add the device (or tap Allow Download on it), so nobody else on your hotspot can take its key.")
                 }
                 Section {
                     Toggle("Keep sharing in the background", isOn: $settings.backgroundSharing)
@@ -55,7 +63,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Background")
                 } footer: {
-                    Text("On: sharing runs as a system VPN component, so it keeps going when you lock this iPhone or switch apps. iOS allows one VPN at a time, so this iPhone can't use another VPN app while sharing.\n\nOff: sharing runs inside Open Bars and pauses when you leave the app, so keep it on screen (the display stays awake while sharing). In this mode, hotspot devices can go through a VPN app running on this iPhone.")
+                    Text("On: sharing runs as a system VPN component, so it keeps going when you lock this iPhone or switch apps. iOS allows one VPN at a time, so this iPhone can't use another VPN app while sharing.\n\nOff: sharing runs inside Open Bars and pauses shortly after you leave the app, so keep it on screen (the display stays awake while sharing). In this mode, hotspot devices can go through a VPN app running on this iPhone.")
                 }
                 Section {
                     Toggle("Turn on Personal Hotspot when starting", isOn: $settings.hotspotShortcut)
@@ -97,5 +105,11 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private var limitSummary: String {
+        if settings.capRules.isEmpty && settings.newDeviceRules.isEmpty { return "Per device" }
+        if let c = settings.capRules.first { return "All: " + c.summary }
+        return "New: " + (settings.newDeviceRules.first?.summary ?? "")
     }
 }

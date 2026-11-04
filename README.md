@@ -68,13 +68,21 @@ The first time you open Open Bars on an iPhone or iPad, it asks whether that dev
 **On the iPhone that shares**
 
 1. Turn on Personal Hotspot, open Open Bars and tap **Start**. Allow Local Network access when asked.
-2. By default sharing runs inside the app, so keep it on screen (the display stays awake while sharing). To lock the iPhone or switch apps, turn on **Settings › Keep sharing in the background**. Sharing then runs as a system VPN component that iOS keeps alive. It carries none of the iPhone's own traffic, but iOS runs one VPN at a time, so the iPhone can't use another VPN app while sharing this way.
+2. By default sharing runs inside the app, so keep it on screen (the display stays awake while sharing). It keeps going for a short time after you switch away (iOS allows about 30 seconds), then pauses and sends a notification. To lock the iPhone or switch apps, turn on **Settings › Keep sharing in the background**. Sharing then runs as a system VPN component that iOS keeps alive. It carries none of the iPhone's own traffic, but iOS runs one VPN at a time, so the iPhone can't use another VPN app while sharing this way.
 3. Optional: **Settings › Personal Hotspot**. Apps can't switch on Personal Hotspot, but Shortcuts can. Add the "Open Bars Hotspot" shortcut from there, and Start turns the hotspot on too (Open Bars hops to Shortcuts for a moment and back).
 
 Other ways to start and stop (iOS 18 or later):
 
 - **Control Center:** **Open Bars Sharing** turns sharing on or off without opening the app (it runs in the background). **Open Bars + Hotspot** turns the hotspot and sharing on together, or off together, opening Open Bars for a moment. Both are highlighted while sharing.
 - **Widgets, Siri and Shortcuts:** a Home Screen widget, and the actions **Start Sharing**, **Stop Sharing** and **Share with Hotspot**.
+
+**Data limits and notifications**
+
+- **Limits:** on a device's page, set how much data it can use per hour, day, week or month, or in total, and pause its internet at any time. **Settings › Data Limits** sets what happens when a limit is reached (block, slow down or only notify), a limit for newly allowed devices, and a limit for all devices together with your billing day. You can also choose a limit when you tap Allow.
+- **Asking for more:** a connected device can open `http://10.66.66.1` to see its own usage and limits and ask for more time or data. You approve or decline on the iPhone, from the Share tab or the notification.
+- **Removing a device keeps its record:** when it pairs again with the same key, its limits and usage carry on.
+- **Notifications** (mostly with background sharing): a device asking to connect, a device near or at a limit, a request for more, sharing stopping by itself (including when iOS ends background sharing without warning), and problems. You can answer from the notification (Allow, Give More, Approve), and turn each kind off in Settings.
+- **The limitation:** limits count what goes through Open Bars. A device that knows your hotspot password can turn its VPN off and use Personal Hotspot directly, which Open Bars can't see or limit.
 
 **On a Mac, iPad or iPhone that connects**
 
@@ -92,7 +100,7 @@ On a Mac, Open Bars lives in the menu bar once it's set up. **Settings › Menu 
 
 **Other devices (WireGuard app)**
 
-In Share, tap **Add › Something else**, create the device, then scan its QR code with the WireGuard app. On a laptop, open `http://172.20.10.1:8080` while on the hotspot and download its `.conf`.
+In Share, tap **Add › Something else**, create the device, then scan its QR code with the WireGuard app. On a laptop, open `http://172.20.10.1:8080` while on the hotspot and download its `.conf`. The page offers each config once, within 15 minutes of adding the device (or tapping **Allow Download** on it), so nobody else on the hotspot can take its key.
 
 ## Privacy
 
@@ -126,7 +134,8 @@ The Windows build isn't code-signed yet, so SmartScreen doesn't recognize it. Ch
 - Each device gets an IPv4 and an IPv6 address inside the tunnel, and its DNS goes to the iPhone, so none of its traffic leaves through the hotspot directly.
 - Background sharing is a packet tunnel extension with no routes: it only keeps the server running while the app is closed.
 - Connect is a Network Extension packet tunnel running wireguard-go, with on-demand rules matching the hotspot's Wi‑Fi name (the iPhone's name).
-- Pairing is a small HTTP API on the iPhone (`/api/pair`), answered only after someone taps Allow there.
+- Pairing is a small HTTP API on the iPhone (`/api/pair`), answered only after someone taps Allow there. A request stays open for 10 minutes, so it can be allowed later from a notification.
+- Data limits are decided every second from WireGuard's per-device byte counters and applied to the device's packets: blocked devices can only reach the status page, slowed ones go through a token bucket. The status page (`http://10.66.66.1`) is served inside the userspace stack, so a request's source is the device's tunnel address, which WireGuard ties to its key.
 
 ## Building
 
